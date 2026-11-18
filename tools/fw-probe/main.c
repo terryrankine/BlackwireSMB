@@ -21,6 +21,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <fcntl.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -68,6 +69,9 @@ static uint64_t le64(const unsigned char *p) { return (uint64_t)le32(p)|((uint64
 /* Same read-only sysctl ABI the gates use. Returns the raw syscall result; on
  * the carry flag it returns a negative errno-style value. *len is updated by
  * the kernel to the bytes written (buf) or required (buf==NULL). */
+/* A wrong syscall number would run some other syscall in a payload that claims
+ * to be read only. Same guard as native_session_ps5.c. */
+_Static_assert(SYS___sysctl == 202, "PS5 __sysctl syscall number");
 static long raw_sysctl(const int *mib, unsigned n, void *buf, size_t *len) {
     register uint64_t r10 __asm__("r10") = (uintptr_t)len, r8 __asm__("r8") = 0, r9 __asm__("r9") = 0;
     uint64_t value; unsigned char carry;
@@ -174,6 +178,10 @@ static void serve_once(int port) {
     if (s < 0) return;
     int one = 1;
     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+    /* Bound wait: an unclaimed listener must not keep the payload, and the
+     * process list, exposed on the LAN. accept honours SO_RCVTIMEO on FreeBSD. */
+    struct timeval wait = {.tv_sec = 60, .tv_usec = 0};
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &wait, sizeof wait);
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof addr);
     addr.sin_family = AF_INET;
@@ -193,25 +201,31 @@ static void serve_once(int port) {
     close(s);
 }
 
-int main(int argc, char **argv) {
-    build_report(argc, argv);
-    if (g_buf) {
-        int fd = open(OUT_PATH, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-        if (fd >= 0) {
-            size_t off = 0;
-            while (off < g_len) {
-                ssize_t w = write(fd, g_buf + off, g_len - off);
-                if (w <= 0) break;
-                off += (size_t)w;
-            }
-            close(fd);
-        }
-        write(1, g_buf, g_len);
+/* Whole buffer or failure, so a short report is never mistaken for a full one. */
+static int write_all(int fd, const char *p, size_t n) {
+    while (n) {
+        ssize_t w = write(fd, p, n);
+        if (w <= 0) return -1;
+        p += w; n -= (size_t)w;
     }
+    return 0;
+}
+
+int main(int argc, char **argv) {
+    int status = 0;
+    build_report(argc, argv);
+    if (!g_buf) { fprintf(stderr, "fw-probe: report buffer allocation failed\n"); return 1; }
+    int fd = open(OUT_PATH, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) { perror("fw-probe: open " OUT_PATH); status = 1; }
+    else {
+        if (write_all(fd, g_buf, g_len)) { perror("fw-probe: write " OUT_PATH); status = 1; }
+        if (close(fd)) { perror("fw-probe: close " OUT_PATH); status = 1; }
+    }
+    if (write_all(1, g_buf, g_len)) status = 1;
     if (argc > 2) {
         int port = (int)strtol(argv[2], NULL, 0);
         if (port > 0 && port < 65536) serve_once(port);
     }
     free(g_buf);
-    return 0;
+    return status;
 }

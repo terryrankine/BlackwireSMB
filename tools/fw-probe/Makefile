@@ -16,7 +16,7 @@ endif
 
 ELF := blackwire-fw-probe.elf
 
-CFLAGS := -Wall -Wextra -Werror -g
+CFLAGS += -Wall -Wextra -Werror -g
 
 all: $(ELF)
 
