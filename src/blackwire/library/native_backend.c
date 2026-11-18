@@ -26,6 +26,7 @@
 #include "idle_log_cache.h"
 #endif
 #include "../streamreader/copy_sha256.h"
+#include "../streamreader/bw_tp_error.h"
 #include <errno.h>
 #include <limits.h>
 #include <sys/stat.h>
@@ -769,9 +770,10 @@ static void check_source_failure(struct bw_native_check_failure *out,const struc
 static void check_failure_message(struct bw_native_backend *p,const struct bw_native_check_failure *failure,int saved){
     p->check_failure=*failure;p->check_settings_saved=saved!=0;const char *what="The library could not be validated";
     if(!strcmp(failure->stage,"smb-connect")){
-        what=failure->nt_status==UINT32_C(0xc00000cc)?"The SMB shared folder was not found":
-            failure->nt_status==UINT32_C(0xc000006d)||failure->nt_status==UINT32_C(0xc000006a)||failure->nt_status==UINT32_C(0xc0000064)?"SMB sign-in was refused":
-            failure->nt_status==UINT32_C(0xc0000022)?"SMB share access was refused":
+        enum bw_tp_error class=bw_tp_error_from_nt(failure->nt_status);
+        what=class==BW_TP_ROOT_MISSING?"The SMB shared folder was not found":
+            class==BW_TP_AUTH?"SMB sign-in was refused":
+            class==BW_TP_DENIED?"SMB share access was refused":
             failure->result==-ETIMEDOUT?"The SMB connection timed out":"The SMB connection or sign-in failed";
     }else if(*failure->source&&failure->transport_result_known&&
              (!strcmp(failure->source_operation,"admit_stat")||!strcmp(failure->source_operation,"generation_fstat")||

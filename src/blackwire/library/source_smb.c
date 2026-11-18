@@ -3,6 +3,7 @@
 #endif
 #include "source_smb.h"
 #include "source_directory.h"
+#include "../streamreader/bw_tp_error.h"
 #include <errno.h>
 #include <poll.h>
 #include <stdio.h>
@@ -337,10 +338,10 @@ done:
 static int bs_lookup_result(struct bw_source_smb *owner,struct bw_source_smb *view,int result){
     int recover=0;
     if(view->smb&&view->error){
-        if((!strcmp(view->error,"source_file_open_failed")||!strcmp(view->error,"source_directory_open_failed"))&&
-            (view->last_status==UINT32_C(0xc0000034)||view->last_status==UINT32_C(0xc000003a)))recover=BW_SOURCE_MISSING;
-        else if((!strcmp(view->error,"source_file_open_failed")||!strcmp(view->error,"source_directory_open_failed"))&&
-            (view->last_status==UINT32_C(0xc0000022)||view->last_status==UINT32_C(0xc0000043)||view->last_status==UINT32_C(0xc0000103)||view->last_status==UINT32_C(0xc00000ba)))recover=BW_SOURCE_UNAVAILABLE;
+        enum bw_tp_error class=bw_tp_error_from_nt(view->last_status);
+        int opening=!strcmp(view->error,"source_file_open_failed")||!strcmp(view->error,"source_directory_open_failed");
+        if(opening&&class==BW_TP_MISSING)recover=BW_SOURCE_MISSING;
+        else if(opening&&(class==BW_TP_DENIED||class==BW_TP_UNAVAILABLE))recover=BW_SOURCE_UNAVAILABLE;
         else if(!strcmp(view->error,"source_file_is_linked_special_or_changed")||!strcmp(view->error,"source_directory_is_linked_special_or_changed")||
             !strcmp(view->error,"source_directory_is_linked_or_special")||!strcmp(view->error,"catalog_source_file_changed")||!strcmp(view->error,"catalog_source_parent_changed"))recover=BW_SOURCE_UNAVAILABLE;
     }
