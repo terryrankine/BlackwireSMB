@@ -21,6 +21,9 @@ CONTAINER_CFILES = ["library/source_identity.c", "streamreader/container_source.
 CFILES += CONTAINER_CFILES
 PROJECTION_CFILES = ["library/source_companions.c", "library/reader_projection.c"]
 CFILES += PROJECTION_CFILES
+# Linked only into the module. Host suites that compile CFILES with SMB fakes
+# stay free of libnfs.
+NFS_CFILES = ["reader/preload/private_nfs.c"]
 FLAGS = ["AMPR_PACK_ENABLE=1", "AMPR_DIRECTORY_OVERLAY=1", "AMPR_PROCESS_READ_INTERCEPT=1",
          "AMPR_PROCESS_OPEN_INTERCEPT=1", "AMPR_PROCESS_AIO_INTERCEPT=1",
          "AMPR_PROCESS_SYNC_READ_INTERCEPT=1", "AMPR_DEBUG_LOG=0", "AMPR_COMMAND_LOG=0", "BP_METADATA_PROFILE=0",
@@ -31,6 +34,16 @@ READER_SOURCE_DATE_EPOCH = 0
 RENAMES = {"getaddrinfo": "bp_smb_getaddrinfo", "freeaddrinfo": "bp_smb_freeaddrinfo",
            "getprotobyname": "bp_smb_getprotobyname", "random": "bp_smb_random",
            "srandom": "bp_smb_srandom", "getenv": "bp_smb_getenv", "__isthreaded": "bp_smb_isthreaded"}
+# libnfs gets its own adapters: it resolves with a NULL service, asks the
+# services database while it picks a reserved source port, and would set the
+# game's SIGPIPE disposition.
+NFS_RENAMES = {"getaddrinfo": "bp_nfs_getaddrinfo", "freeaddrinfo": "bp_nfs_freeaddrinfo",
+               "getprotobyname": "bp_nfs_getprotobyname", "getservbyport": "bp_nfs_getservbyport",
+               "signal": "bp_nfs_signal"}
+# Each private archive is renamed on its own copy. Its symbols stay inside the
+# combined object: the version script exports AMPR NIDs only.
+PRIVATE_ARCHIVES = (("smb", "libsmb2-private.a", RENAMES), ("nfs", "libnfs-private.a", NFS_RENAMES))
+PRIVATE_NAMES = {name for _, _, renames in PRIVATE_ARCHIVES for name in renames}
 
 
 def reader_source_flags(root, out, sdk):
@@ -130,7 +143,8 @@ def host_tests(root, out, source, runner):
                 tests / "source_test.c", "-Wl,--wrap=clock_gettime", "-o", exe], "host-source-compile")
     results["source"] = json.loads(runner.run([exe], "host-source-test"))
     exe = out / "test-adapter"
-    runner.run([*cc, root / "src/blackwire/reader/preload/private_smb.c", tests / "adapter_test.c", "-o", exe], "host-adapter-compile")
+    runner.run([*cc, root / "src/blackwire/reader/preload/private_smb.c", root / "src/blackwire/reader/preload/private_nfs.c",
+                tests / "adapter_test.c", "-o", exe], "host-adapter-compile")
     results["adapter"] = json.loads(runner.run([exe], "host-adapter-test"))
     for name in ("prehook", "input_diagnostic"):
         exe = out / ("test-" + name)
@@ -275,9 +289,17 @@ def private_arc4(root, out, runtime, runner):
 
 
 def build(root, out, sdk, source, dependency, runner, jobs, runtime):
-    private = out / "libsmb2-private.a"
-    copy(dependency["smb"], private)
-    runner.run(["llvm-objcopy-18", *["--redefine-sym=" + a + "=" + b for a, b in RENAMES.items()], private], "reader-private-smb")
+    privates, archive_symbols = {}, {}
+    for key, name, renames in PRIVATE_ARCHIVES:
+        private = out / name
+        copy(dependency[key], private)
+        runner.run(["llvm-objcopy-18", *["--redefine-sym=" + a + "=" + b for a, b in renames.items()], private], "reader-private-" + key)
+        listing = runner.run(["llvm-nm-18", "--defined-only", "--extern-only", "--format=just-symbols", private], "reader-private-" + key + "-defined")
+        privates[key], archive_symbols[key] = private, {line.strip() for line in listing.splitlines() if line.strip() and not line.endswith(":")}
+    clash = archive_symbols["smb"] & archive_symbols["nfs"]
+    if clash:
+        raise ValueError("Private archives define the same symbol: " + ", ".join(sorted(clash)[:20]))
+    linked = " ".join(str(privates[key]) for key, _, _ in PRIVATE_ARCHIVES)
     arc4 = private_arc4(root, out, runtime, runner)
     providers, provider_pins = {}, {}
     for name in ("libkernel.so", "libSceLibcInternal.so"):
@@ -301,10 +323,10 @@ def build(root, out, sdk, source, dependency, runner, jobs, runtime):
     generator.write_text(text)
     make = source / "Makefile"
     text = make.read_text().replace("CPP_SOURCES := \\", "CPP_SOURCES := src/runtime.cpp \\", 1)
-    objects = " ".join("$(OBJ)/bw/" + name[:-2] + ".o" for name in CFILES)
+    objects = " ".join("$(OBJ)/bw/" + name[:-2] + ".o" for name in [*CFILES, *NFS_CFILES])
     text = text.replace("RENAMED_OBJECTS :=", "OBJECTS += " + objects + "\nRENAMED_OBJECTS :=", 1)
-    text = text.replace("$(COMBINED_OBJ): $(OBJECTS)", "$(COMBINED_OBJ): $(OBJECTS) " + str(private) + " " + str(arc4))
-    text = text.replace("-r -o $@ $(OBJECTS)", "-r -o $@ $(OBJECTS) " + str(private) + " " + str(arc4))
+    text = text.replace("$(COMBINED_OBJ): $(OBJECTS)", "$(COMBINED_OBJ): $(OBJECTS) " + linked + " " + str(arc4))
+    text = text.replace("-r -o $@ $(OBJECTS)", "-r -o $@ $(OBJECTS) " + linked + " " + str(arc4))
     text = text.replace("$(RENAMED_OBJECTS) $(METADATA_OBJ) $(LIBC_SO)", "$(OBJ)/nids/combined.o $(METADATA_OBJ) $(LIBC_SO)", 1)
     text = text.replace("$(RENAMED_OBJECTS) $(METADATA_OBJ) \\", "$(OBJ)/nids/combined.o $(METADATA_OBJ) \\", 1)
     mapping_flags = " ".join(reader_source_flags(root, out, sdk))
@@ -315,7 +337,7 @@ CXXFLAGS += -DAMPR_EMU_APP0_INDEX_AUTOBUILD=0 -DAMPR_EMU_PACK_WORKERS=1 -DAMPR_E
 $(OBJ)/src/runtime.o: CXXFLAGS += -Wall -Wextra -Werror
 $(OBJ)/bw/%.o: bw/%.c $(BUILD_MAKEFILE) $(BUILD_CONFIG)
 \t@mkdir -p $(dir $@)
-\t$(CC) -std=c11 -DBW_GTA_AUDIO_BOOTSTRAP=1 $(COMMON_FLAGS) -I'''+str(root / "vendor/libsmb2/include")+''' -Wall -Wextra -Werror -Wno-misleading-indentation -Wno-unused-function -MD -MP -c $< -o $@
+\t$(CC) -std=c11 -DBW_GTA_AUDIO_BOOTSTRAP=1 $(COMMON_FLAGS) -I'''+str(root / "vendor/libsmb2/include")+''' -I'''+str(root / "vendor/libnfs/include")+''' -Wall -Wextra -Werror -Wno-misleading-indentation -Wno-unused-function -MD -MP -c $< -o $@
 $(OBJ)/nids/combined.o: $(COMBINED_OBJ) $(RENAME_MAP)
 \t@mkdir -p $(dir $@)
 \tcp $< $@
@@ -326,14 +348,24 @@ $(OBJ)/nids/combined.o: $(COMBINED_OBJ) $(RENAME_MAP)
     runner.run(["make", "-j" + str(jobs), "verify", "OUT=" + str(native), "PS5_PAYLOAD_SDK=" + str(sdk), "SOURCE_DATE_EPOCH=" + str(READER_SOURCE_DATE_EPOCH), *FLAGS], "reader-sdk-verify", source)
     imported = {name: (native / "obj/generated" / name).read_text().splitlines()
                 for name in ("libkernel.imports.txt", "libSceLibcInternal.imports.txt")}
-    forbidden = set(RENAMES)
-    if forbidden.intersection(imported["libkernel.imports.txt"] + imported["libSceLibcInternal.imports.txt"]):
-        raise ValueError("Private SMB symbol remains a public import")
+    if PRIVATE_NAMES.intersection(imported["libkernel.imports.txt"] + imported["libSceLibcInternal.imports.txt"]):
+        raise ValueError("Private SMB or NFS symbol remains a public import")
     symbols = runner.run(["llvm-nm-18", native / "obj/link/libSceAmpr.combined.o"], "reader-symbol-check")
     if not any(line.endswith(" D bp_smb_isthreaded") for line in symbols.splitlines()):
         raise ValueError("Missing real private DATA object")
-    if any(line.endswith(" U " + name) for line in symbols.splitlines() for name in RENAMES):
+    if any(line.endswith(" U " + name) for line in symbols.splitlines() for name in PRIVATE_NAMES):
         raise ValueError("Unresolved private symbol")
+    targets = {target for _, _, renames in PRIVATE_ARCHIVES for target in renames.values()}
+    if any(line.endswith(" U " + name) for line in symbols.splitlines() for name in targets):
+        raise ValueError("Private adapter missing")
+    # No library symbol may reach the module's dynamic table, where a game or
+    # another module could bind to it.
+    dynamic = runner.run(["llvm-readelf-18", "--dyn-syms", "--wide", native / "libSceAmpr.prx"], "reader-dynamic-symbols")
+    exposed = {line.split()[-1].split("@")[0] for line in dynamic.splitlines()
+               if len(line.split()) >= 8 and line.split()[6] != "UND"}
+    leaked = exposed & (archive_symbols["smb"] | archive_symbols["nfs"])
+    if leaked:
+        raise ValueError("Private library symbol is dynamic: " + ", ".join(sorted(leaked)[:20]))
     memory = runner.run(["llvm-nm-18", "--print-size", native / "libSceAmpr.prx"], "reader-memory-check")
     backing = {}
     for line in memory.splitlines():
@@ -345,10 +377,12 @@ $(OBJ)/nids/combined.o: $(COMBINED_OBJ) $(RENAME_MAP)
     image = native / "libSceAmpr.sprx"
     result = {"folderOnly": False, "containerSelection": True, "image": pin(image),
               "publicProviders": provider_pins, "publicImports": imported, "privateRenames": RENAMES,
+              "privateNfsRenames": NFS_RENAMES, "privateNfs": pin(privates["nfs"]),
+              "privateArchiveSymbols": {key: len(names) for key, names in archive_symbols.items()},
               "sourceRuntime": {"receipt": runtime["receiptPin"],
                                 "manifest": sdk_runtime.products(root, out, runtime)["runtimeManifest"]},
               "privateArc4": pin(arc4),
-              "privateSmb": pin(private), "flags": FLAGS, "workerCount": 1,
+              "privateSmb": pin(privates["smb"]), "flags": FLAGS, "workerCount": 1,
               "cacheBytes": 67108864, "poolBytes": 402653184, "backingSymbols": backing,
               "totalModuleMemoryIsNotCacheSize": True, "indexAutobuild": False,
               "generatedSource": tree(source), "sourceDateEpoch": READER_SOURCE_DATE_EPOCH,
