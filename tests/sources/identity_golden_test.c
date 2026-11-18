@@ -30,6 +30,43 @@ static const struct smb2_stat_64 stats[]={
      UINT64_C(0x00000001ffffffff),UINT64_C(999999000),UINT64_C(0x0000000200000000),1000,0,0},
     {SMB2_TYPE_LINK,0,1,UINT64_C(0xffffffffffffffff),9,9,0,0,UINT64_MAX,UINT64_MAX,9,9}
 };
+/* Each compared field alone must break same-file, in both argument orders and
+ * through the catalog wrapper. A flip also moves the catalog seal, so no
+ * compared field escapes the hash either. */
+static void same_file_fields(void){
+    const struct smb2_stat_64 base=stats[0];struct bw_stat a,b;uint8_t want[32],got[32];
+    bw_stat_from_smb2(&a,&base);bw_source_catalog_image_hash(&a,want);
+    C(bw_stat_same_file(&a,&a)&&bw_source_catalog_image_same(&a,&a));
+    C(!bw_stat_same_file(NULL,&a)&&!bw_stat_same_file(&a,NULL)&&!bw_source_catalog_image_same(NULL,NULL));
+    for(unsigned field=0;field<8;field++){
+        struct smb2_stat_64 raw=base;
+        switch(field){
+        case 0:raw.smb2_type=SMB2_TYPE_DIRECTORY;break;case 1:raw.smb2_type=SMB2_TYPE_LINK;break;
+        case 2:raw.smb2_ino^=1;break;case 3:raw.smb2_size^=1;break;
+        case 4:raw.smb2_mtime^=1;break;case 5:raw.smb2_mtime_nsec+=1000;break;
+        case 6:raw.smb2_ctime^=1;break;default:raw.smb2_ctime_nsec+=1000;break;
+        }
+        bw_stat_from_smb2(&b,&raw);
+        C(!bw_stat_same_file(&a,&b)&&!bw_stat_same_file(&b,&a));
+        C(!bw_source_catalog_image_same(&a,&b)&&!bw_source_catalog_image_same(&b,&a));
+        bw_source_catalog_image_hash(&b,got);C(memcmp(want,got,32));
+    }
+    /* Equal non-files are still not the same file. */
+    struct smb2_stat_64 dir=base;dir.smb2_type=SMB2_TYPE_DIRECTORY;bw_stat_from_smb2(&b,&dir);C(!bw_stat_same_file(&b,&b));
+    /* Ignored fields stay ignored: nlink, atime and btime at the boundary and
+     * reserved in the neutral form change neither the answer nor the seal. */
+    for(unsigned field=0;field<6;field++){
+        struct smb2_stat_64 raw=base;
+        switch(field){
+        case 0:raw.smb2_nlink^=UINT32_MAX;break;case 1:raw.smb2_atime^=UINT64_MAX;break;
+        case 2:raw.smb2_atime_nsec^=UINT64_MAX;break;case 3:raw.smb2_btime^=UINT64_MAX;break;
+        case 4:raw.smb2_btime_nsec^=UINT64_MAX;break;default:break;
+        }
+        bw_stat_from_smb2(&b,&raw);if(field==5)b.reserved=UINT32_MAX;
+        C(bw_stat_same_file(&a,&b)&&bw_stat_same_file(&b,&a)&&bw_source_catalog_image_same(&a,&b));
+        bw_source_catalog_image_hash(&b,got);C(!memcmp(want,got,32));
+    }
+}
 int main(void){
     struct bw_share_config config={0};
     strcpy(config.server,"nas.example");strcpy(config.share,"Games");strcpy(config.user,"neutral");strcpy(config.password,"secret");
@@ -73,6 +110,7 @@ int main(void){
     C(!bw_source_snapshot_finish(&plain)&&!bw_source_snapshot_validate(&plain));
     hex("snapshotBound",bound.sha256,0);hex("snapshotPlain",plain.sha256,0);
     bw_source_snapshot_destroy(&bound);bw_source_snapshot_destroy(&plain);
+    same_file_fields();
     printf("\"checks\":%u}\n",checks);
     return 0;
 }
