@@ -110,6 +110,11 @@ static void name_this_process(void) {
 static FILE *logfp;
 
 static void log_line(const char *msg) {
+#ifdef BW_NATIVE_BACKEND
+  /* GET /api/log serves the same lines from memory; release builds keep
+   * no other readable log on the console. */
+  bw_native_log(msg);
+#endif
   if (!logfp) {
     return;
   }

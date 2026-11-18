@@ -28,6 +28,12 @@ struct bw_native_library {
     uint32_t requests,entries;
     uint64_t content_bytes;
     struct bw_native_check_failure failure;
+    /* Scan input, borrowed and cleared before publication: the previous
+     * library of the same settings, and the one title a targeted check
+     * validates. Counters report what the scan reused or opened. */
+    const struct bw_native_library *reuse;
+    const char *only_title;
+    uint32_t reused,validated,deferred;
 };
 struct bw_native_prepare_selection {
     /* Controller-owned typed selection. Actual outer image metadata is a
@@ -152,4 +158,7 @@ int bw_native_backend_handle_reserved(struct bw_native_backend *,const char[33],
  * SMB/hash/publication or blocking process wait occurs on this HTTP thread. */
 int bw_native_backend_home_claim(struct bw_native_backend *,const void *,size_t,int peer_loopback,int reader_header,int browser_origin,struct bw_native_response *);
 void bw_native_response_clear(struct bw_native_response *);
+/* Bounded in-memory ring served by GET /api/log: the last 256 lines, each cut
+ * to 191 bytes. Thread safe. Never pass a password, token or share secret. */
+void bw_native_log(const char *);
 #endif

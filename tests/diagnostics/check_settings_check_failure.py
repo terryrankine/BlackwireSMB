@@ -21,7 +21,11 @@ def main():
  header+=source[start:end]+'\n'+'\n'.join(l for l in source.splitlines() if l.startswith('enum {'))+'\n'
  header+='static void bw_send_log(const char *,const char *,...);\nstatic int removal_cache(struct bw_native_backend *,struct bw_native_library *,const struct bw_share_config *);\n'
  header+=function((lib/'native_setup.c').read_text(),'int bw_native_setup_config_valid(')+'\n'
- names=['static double now(','static int valid_config(','static int config_equal(','static void settings_adopt(','static int same_info(','static int source_compare(','static int catalog_order(','static int valid_library(','void bw_native_library_destroy(','static void check_reason(','static void check_failure(','static void check_source_failure(','static void check_failure_message(','static int discover_one(','static int library_merge(','static int discover(','static int settings_idle(','static void *scan(','static const char *phase_message(','static void setup_failure_json(','static const char *setup_message(']
+ # Log ring, title Send hand-off and preparation are outside this unit. A
+ # setup check never starts a title Send, so the hand-off is never reached.
+ header+='static void native_logf(const char *f,...){(void)f;}\nvoid bw_native_log(const char *l){(void)l;}\nstatic const char *phase_name(int);\n'
+ header+='static int title_send_continue(struct bw_native_backend *p,int s){(void)p;(void)s;abort();}\nstatic void *prepare_worker(void *p){(void)p;abort();}\n'
+ names=['static double now(','static int valid_config(','static int config_equal(','static void settings_adopt(','static int same_info(','static int source_compare(','static int catalog_order(','static int valid_library(','void bw_native_library_destroy(','static void check_reason(','static void check_failure(','static void check_source_failure(','static void check_failure_message(','static int discover_one(','static int library_merge(','static int discover(','static int settings_idle(','static void *scan(','static const char *phase_name(','static const char *phase_message(','static void setup_failure_json(','static const char *setup_message(']
  for name in names:header+=function(source,name)+'\n'
  (out/'settings-check-under-test.h').write_text(header)
  flags=['clang-18','-std=gnu11','-O1','-g','-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-misleading-indentation','-ffunction-sections','-fdata-sections','-fsanitize=address,undefined','-fno-sanitize-recover=all','-fno-omit-frame-pointer']

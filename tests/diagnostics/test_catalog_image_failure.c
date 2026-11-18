@@ -95,7 +95,13 @@ int main(int argc,char **argv){
  int owner_present=s.smb!=NULL;const char *reason=catalog.error?catalog.error:"none";
  C(catalog.count==1);int container_result=catalog.items[0].container_error;
  const char *stage=bw_source_catalog_stage_name(catalog.items);
+ /* An image that changes while it is checked stays unverified on its own;
+  * the scan itself succeeds. Transport and deadline failures still fail it. */
+ int changed=!result&&catalog.items[0].state==BW_CATALOG_CONTAINER&&container_result==BW_CONTAINER_STALE&&!catalog.error;
+ /* A check past its own budget fails that image alone, as operation_canceled. */
+ int timed_out=!result&&catalog.items[0].state==BW_CATALOG_CONTAINER&&container_result==BW_CONTAINER_CANCELED&&!catalog.error;
  if(!strcmp(mode,"valid")||!strcmp(mode,"short-read")){C(!result&&catalog.items[0].state==BW_CATALOG_CONTAINER_READY);}
+ else if(!result){C((changed||timed_out)&&!catalog.failure.source[0]);}
  else {C(result==-1);C(!strcmp(catalog.failure.source,"Neutral.ffpfsc")&&!strcmp(catalog.failure.stage,stage));}
  if(s.smb)smb2_destroy_context(s.smb);
  C(destroys==1);C(opens<=1&&closes<=1);
@@ -107,7 +113,7 @@ int main(int argc,char **argv){
 #else
  C(side_effects==0);
 #endif
- printf("{\"passed\":true,\"checks\":%u,\"result\":%d,\"containerResult\":%d,\"stage\":\"%s\",\"reason\":\"%s\",\"failureOperation\":\"%s\",\"failureTransportResult\":%d,\"failureTransportResultKnown\":%s,\"ownerPresentBeforeCleanup\":%s,\"stats\":%u,\"heldStats\":%u,\"reads\":%u,\"opens\":%u,\"closes\":%u,\"destroys\":%u}\n",
- checks,result,container_result,stage,reason,catalog.failure.operation,catalog.failure.transport_result,catalog.failure.transport_result_known?"true":"false",owner_present?"true":"false",stats,heldstats,reads,opens,closes,destroys);
+ printf("{\"passed\":true,\"timedOut\":%s,\"changed\":%s,\"checks\":%u,\"result\":%d,\"containerResult\":%d,\"stage\":\"%s\",\"reason\":\"%s\",\"failureOperation\":\"%s\",\"failureTransportResult\":%d,\"failureTransportResultKnown\":%s,\"ownerPresentBeforeCleanup\":%s,\"stats\":%u,\"heldStats\":%u,\"reads\":%u,\"opens\":%u,\"closes\":%u,\"destroys\":%u}\n",
+ timed_out?"true":"false",changed?"true":"false",checks,result,container_result,stage,reason,catalog.failure.operation,catalog.failure.transport_result,catalog.failure.transport_result_known?"true":"false",owner_present?"true":"false",stats,heldstats,reads,opens,closes,destroys);
  bw_source_catalog_destroy(&catalog);return 0;
 }

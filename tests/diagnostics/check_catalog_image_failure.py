@@ -101,6 +101,10 @@ with tempfile.TemporaryDirectory(prefix='blackwire-image-failure-') as temp:
                 log.unlink()
             value = json.loads(run([binaries[diagnostic], malformed if case == 'decoder-format' else image, case]))
             assert value['stage'] == stage and value['ownerPresentBeforeCleanup'] == (not cleared), (case, value)
+            # A generation change of the image alone marks only that row.
+            assert value['changed'] == case.startswith(('held-', 'named-')), (case, value)
+            assert value['timedOut'] == (case == 'deadline'), (case, value)
+            assert (value['result'] == 0) == (case in ('valid', 'short-read', 'deadline') or value['changed']), (case, value)
             if case in ('admit-stat', 'admit-stat-eperm'):
                 assert value['reason'] == 'catalog_image_access_refused' and value['failureTransportResultKnown'] and value['failureTransportResult'] == (-13 if case == 'admit-stat' else -1), value
             if case == 'open-readonly':
@@ -108,7 +112,7 @@ with tempfile.TemporaryDirectory(prefix='blackwire-image-failure-') as temp:
             if case == 'pread-eof-close-denied':
                 assert value['failureTransportResult'] == 0 and value['failureOperation'] == 'pread' and value['reason'] != 'catalog_image_access_refused', value
             if case == 'deadline':
-                assert value['reason'] == 'catalog_image_scan_expired', value
+                assert value['reason'] == 'none' and value['containerResult'] == -35, value
             lines = log.read_text().splitlines() if log.exists() else []
             low = [line for line in lines if 'event=container-image-failure ' in line]
             high = [line for line in lines if 'event=catalog-image-failure ' in line]
@@ -133,7 +137,7 @@ with tempfile.TemporaryDirectory(prefix='blackwire-image-failure-') as temp:
                 if high:
                     assert 'path=Neutral.ffpfsc ' in high[0] and f'stage={stage} ' in high[0] and 'deadline=' in high[0], high
                     if case == 'deadline':
-                        assert 'containerError=source_generation ' in high[0] and 'deadline=0.000000' in high[0], high
+                        assert 'containerError=operation_canceled ' in high[0] and 'deadline=0.000000' in high[0], high
                     if case == 'decoder-format':
                         assert 'containerError=io_failure ' in high[0] and 'decoderResult=-2 ' in high[0] and 'transportResult=0 ' in high[0], high
                 assert len([line for line in lines if 'event=diagnostic-inert-probe ' in line]) == 1

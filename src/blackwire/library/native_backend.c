@@ -111,7 +111,15 @@ struct bw_native_backend {
     struct {struct bw_native_removal_selection selected;size_t item;uint64_t generation,epoch;uint32_t revision;
         unsigned restore,startup_only,state,unknown;enum bw_game_uninstall_phase phase;uint32_t files,total;char message[256];
         struct bw_game_uninstall_result result;} removing;
+    /* Digest of the settings the published library was read with. A later
+     * scan borrows its rows only under the same settings. */
+    uint8_t library_config[32];int library_config_known;
+    struct {uint32_t reused,validated,deferred,requests;uint64_t content_bytes;double seconds;int success;} last_scan;
+    /* Send by title ID. CHECKING: a targeted scan runs, then the scan worker
+     * starts the preparation itself. Reporting only, through GET /api/log. */
+    struct {char title[10],job[33],message[256];int phase;} title_send;
 };
+enum {TITLE_IDLE,TITLE_CHECKING,TITLE_PREPARING,TITLE_DONE,TITLE_FAILED};
 static int registration_waiting(const struct bw_native_backend *p,const char *title){
     if(p->registration_ledger_unknown)return 1;
     for(size_t i=0;i<p->registration_pending_count;i++)if(!strcmp(p->registration_pending[i].title,title))return 1;
@@ -172,6 +180,26 @@ static int home_ready_observe(struct bw_native_backend *,const struct bw_provide
 enum {SETUP_IDLE,SETUP_CHECKING,SETUP_SAVING,SETUP_SAVED,SETUP_FAILED,SETUP_UNCONFIRMED};
 enum {SETUP_NO_ERROR,SETUP_CONNECTION_ERROR,SETUP_STALE_ERROR,SETUP_IDLE_ERROR,SETUP_SAVE_ERROR,SETUP_UNCONFIRMED_ERROR,SETUP_START_ERROR};
 static double now(void){struct timespec t;return clock_gettime(CLOCK_MONOTONIC,&t)?-1:(double)t.tv_sec+(double)t.tv_nsec/1e9;}
+#define NATIVE_LOG_LINES 256u
+#define NATIVE_LOG_BYTES 192u
+/* Fixed memory, oldest line overwritten. Lines are made valid UTF-8 without
+ * control characters so /api/log can always serialise them. */
+static struct {pthread_mutex_t lock;uint64_t written;double at[NATIVE_LOG_LINES];char text[NATIVE_LOG_LINES][NATIVE_LOG_BYTES];} native_log_ring={.lock=PTHREAD_MUTEX_INITIALIZER};
+void bw_native_log(const char *line){
+    if(!line)return;size_t n=strlen(line);
+    if(n>NATIVE_LOG_BYTES-1){n=NATIVE_LOG_BYTES-1;while(n&&((unsigned char)line[n]&0xc0)==0x80)n--;}
+    double at=now();if(pthread_mutex_lock(&native_log_ring.lock))return;
+    unsigned slot=(unsigned)(native_log_ring.written%NATIVE_LOG_LINES);char *text=native_log_ring.text[slot];
+    memcpy(text,line,n);text[n]=0;
+    for(size_t i=0;i<n;i++)if((unsigned char)text[i]<32||text[i]==127)text[i]=' ';
+    if(!bw_json_utf8(text))for(size_t i=0;i<n;i++)if((unsigned char)text[i]>=128)text[i]='?';
+    native_log_ring.at[slot]=at;native_log_ring.written++;pthread_mutex_unlock(&native_log_ring.lock);
+}
+static void native_logf(const char *format,...) __attribute__((format(printf,1,2)));
+static void native_logf(const char *format,...){
+    char line[NATIVE_LOG_BYTES*2];va_list ap;va_start(ap,format);int n=vsnprintf(line,sizeof line,format,ap);va_end(ap);
+    if(n>=0)bw_native_log(line);
+}
 static int worker_start(pthread_t *thread,void *(*entry)(void *),void *opaque){
     /* The copier can nest two 256 KiB scratch frames. Console defaults are
      * smaller than Linux's, so every owned worker gets one bounded stack. */
@@ -822,12 +850,28 @@ static int discover_one(void *opaque,struct bw_share_config *share,struct bw_nat
     if(nfs?result<0&&!connect.result_known:!source.smb){check_failure(&out->failure,share_name,stage,-1,0,nfs?"nfs_unavailable_or_invalid":"smb_context_allocation_failed",NULL);bw_share_clear(share);return -1;}
     bw_share_clear(share);if(result<0){result=connect.result;goto done;}
     stage="catalog";
-    result=bw_source_catalog_scan(&source,&out->catalog);if(result)goto done;
+    const struct bw_native_library *prior=out->reuse;
+    struct bw_catalog_reuse reuse={.items=prior?prior->catalog.items:NULL,.count=prior?prior->catalog.count:0,.share=share_name,.only=out->only_title};
+    result=bw_source_catalog_scan_reusing(&source,&reuse,&out->catalog);
+    out->reused=reuse.reused;out->validated=reuse.validated;out->deferred=reuse.deferred;if(result)goto done;
     if(out->catalog.count){out->covers=calloc(out->catalog.count,sizeof *out->covers);if(!out->covers){result=-1;goto done;}out->cover_count=out->catalog.count;}
     stage="artwork";
     for(size_t i=0;i<out->catalog.count;i++){
         struct bw_catalog_item *item=&out->catalog.items[i];memcpy(item->source_share,share_name,sizeof item->source_share);
+        /* One artwork read gets its own step budget, as each image check did. */
+        double step=now();if(step>=0)source.deadline=step+bw_catalog_step_seconds;
         if(item->state==BW_CATALOG_CONTAINER_READY){
+            /* Artwork of the same validated image generation is reused as is.
+             * An unchanged image is then never opened. */
+            size_t known=prior?bw_source_catalog_reuse_find(prior->catalog.items,prior->catalog.count,item):0;
+            if(prior&&known<prior->catalog.count&&prior->covers&&known<prior->cover_count){
+                const struct bw_native_cover *cover=prior->covers+known;
+                if(cover->size&&cover->size<=cover_limit-out->cover_bytes){
+                    uint8_t *copy=malloc(cover->size);if(!copy){result=-1;break;}
+                    memcpy(copy,cover->bytes,cover->size);out->covers[i]=(struct bw_native_cover){copy,cover->size};out->cover_bytes+=cover->size;
+                }
+                continue;
+            }
             void *bytes=NULL;size_t size=0;
             int found=bw_source_catalog_container_cover(&source,item,cover_limit-out->cover_bytes,&bytes,&size);
             if(found<0){free(bytes);result=-1;break;}
@@ -891,6 +935,7 @@ static int discover(void *opaque,struct bw_share_config *configured,struct bw_na
         if(bw_share_select_source(&connection,configured,i?name:NULL)){
             check_failure(&out->failure,selected,"share-selection",-1,0,"invalid_share_selection",NULL);goto done;
         }
+        parts[i].reuse=out->reuse;parts[i].only_title=out->only_title;
         if(discover_one(opaque,&connection,parts+i,BW_NATIVE_COVER_LIMIT-parts[0].cover_bytes)||!valid_library(parts+i)){
             out->failure=parts[i].failure;
             if(!*out->failure.stage)check_failure(&out->failure,selected,"catalog",-1,0,"catalog_validation_failed",NULL);
@@ -901,6 +946,7 @@ static int discover(void *opaque,struct bw_share_config *configured,struct bw_na
     if(result)check_failure(&out->failure,NULL,"library-merge",result,0,"catalog_merge_failed",NULL);
 done:
     bw_share_clear(&connection);bw_share_clear(configured);
+    for(unsigned i=0;i<2;i++){out->reused+=parts[i].reused;out->validated+=parts[i].validated;out->deferred+=parts[i].deferred;}
     for(unsigned i=0;i<2;i++)bw_native_library_destroy(parts+i);return result;
 }
 static int settings_idle(void *opaque){
@@ -916,8 +962,12 @@ static int settings_idle(void *opaque){
         p->settings_idle!=guard||p->settings_idle_owner!=owner;
     pthread_mutex_unlock(&p->lock);return changed?-1:0;
 }
+static int title_send_continue(struct bw_native_backend *,int);
+static void title_send_finish(struct bw_native_backend *,int,const char *);
+static const char *phase_name(int phase){static const char *names[]={"initial","scanning","ready","needs_setup","error","configuration_changed"};return names[phase];}
 static void *scan(void *opaque){
     struct bw_native_backend *p=opaque;struct bw_share_config config={0},after={0};struct bw_native_library next={0},old={0};
+    uint8_t config_digest[32]={0};int targeted=0,handoff=0;char target[10]={0};double started=now();
 #ifdef BW_HOME_STARTUP
     unsigned char observed_ready[BW_CATALOG_MAX_ITEMS]={0};
 #endif
@@ -937,7 +987,16 @@ static void *scan(void *opaque){
         memcpy(to->nfs_export,from->nfs_export,sizeof to->nfs_export);memcpy(to->nfs_path,from->nfs_path,sizeof to->nfs_path);memcpy(to->nfs_path2,from->nfs_path2,sizeof to->nfs_path2);}pthread_mutex_unlock(&p->lock);}
     }
     phase=BACKEND_FAILED;
-    if(p->ops.discover(p->opaque,&config,&next)||!valid_library(&next)){error=SETUP_CONNECTION_ERROR;goto done;}
+    /* Only this worker replaces p->library, and no other worker runs while
+     * p->active is set. The previous rows are borrowed without the lock. */
+    cp_sha_bytes(&config,sizeof config,config_digest);
+    pthread_mutex_lock(&p->lock);
+    targeted=!setup&&p->title_send.phase==TITLE_CHECKING;if(targeted)memcpy(target,p->title_send.title,sizeof target);
+    if(p->library_config_known&&!memcmp(config_digest,p->library_config,sizeof config_digest)&&p->library.catalog.count)next.reuse=&p->library;
+    pthread_mutex_unlock(&p->lock);
+    if(targeted)next.only_title=target;
+    int discovered=p->ops.discover(p->opaque,&config,&next);next.reuse=NULL;next.only_title=NULL;
+    if(discovered||!valid_library(&next)){error=SETUP_CONNECTION_ERROR;goto done;}
     if(setup){
         if(settings_idle(p)){error=SETUP_IDLE_ERROR;goto done;}
         if(!p->pending.unchanged){
@@ -973,9 +1032,17 @@ static void *scan(void *opaque){
     phase=BACKEND_READY;success=1;
 done:
     bw_send_log(setup?"connection-check-end":"library-scan-end","operation=%u success=%d error=%d phase=%d",p->setup_operation,success,error,phase);
+    double seconds=now()-started;size_t games=next.catalog.count;
     pthread_mutex_lock(&p->lock);p->phase=phase;
     memset(&p->check_failure,0,sizeof p->check_failure);p->check_message[0]=0;p->check_settings_saved=settings_saved!=0;
     if(!success&&*next.failure.stage)check_failure_message(p,&next.failure,settings_saved);
+    p->last_scan.reused=next.reused;p->last_scan.validated=next.validated;p->last_scan.deferred=next.deferred;
+    p->last_scan.requests=next.requests;p->last_scan.content_bytes=next.content_bytes;p->last_scan.seconds=seconds;p->last_scan.success=success;
+    native_logf("library %s%s%s: %s phase=%s games=%zu reused=%u validated=%u deferred=%u requests=%u bytes=%llu seconds=%.1f",
+        setup?"check":"scan",targeted?" for ":"",targeted?target:"",success?"ok":"failed",phase_name(phase),games,next.reused,next.validated,next.deferred,
+        next.requests,(unsigned long long)next.content_bytes,seconds);
+    if(*p->check_message)bw_native_log(p->check_message);
+    if(success){memcpy(p->library_config,config_digest,sizeof config_digest);p->library_config_known=1;}
     if(success){
         old=p->library;p->library=next;memset(&next,0,sizeof next);p->generation++;
 #ifdef BW_HOME_STARTUP
@@ -992,7 +1059,12 @@ done:
     else p->stale=p->library.catalog.count>0;
     if(setup&&!success){p->setup_error=error?error:SETUP_CONNECTION_ERROR;p->setup_phase=error==SETUP_UNCONFIRMED_ERROR?SETUP_UNCONFIRMED:SETUP_FAILED;if(error==SETUP_UNCONFIRMED_ERROR)p->setup_blocked=1;}
     bw_native_sensitive_clear(&p->pending,sizeof p->pending);bw_share_clear(&config);bw_share_clear(&after);
-    p->active=0;pthread_mutex_unlock(&p->lock);bw_native_library_destroy(&next);bw_native_library_destroy(&old);return NULL;
+    p->active=0;
+    if(targeted)handoff=title_send_continue(p,success);
+    pthread_mutex_unlock(&p->lock);bw_native_library_destroy(&next);bw_native_library_destroy(&old);bw_native_sensitive_clear(config_digest,sizeof config_digest);
+    /* The accepted preparation runs on this same joinable thread. */
+    if(handoff)(void)prepare_worker(p);
+    return NULL;
 }
 struct bw_native_backend *bw_native_backend_create(const struct bw_native_backend_ops *ops,void *opaque){
     struct bw_native_backend *p=calloc(1,sizeof *p);if(!p)return NULL;
@@ -1016,21 +1088,25 @@ struct bw_native_backend *bw_native_backend_create(const struct bw_native_backen
     p->settings_status=BW_SETUP_UNSAFE;p->settings_enabled=p->ops.read_settings&&p->ops.save_settings;
     if(p->settings_enabled&&(p->ops.nonce(p->opaque,p->setup_token)||!nonce_valid(p->setup_token))){p->settings_enabled=0;memset(p->setup_token,0,sizeof p->setup_token);}return p;
 }
-static int refresh_unlocked(struct bw_native_backend *p){
-    if(!p||pthread_mutex_lock(&p->lock))return -1;if(p->active){pthread_mutex_unlock(&p->lock);return 1;}
-    if(p->joinable){if(pthread_join(p->worker,NULL)){pthread_mutex_unlock(&p->lock);return -1;}p->joinable=0;}
+/* Caller holds p->lock. 0 started (or settings need setup), 1 busy, -1 error. */
+static int refresh_locked(struct bw_native_backend *p){
+    if(p->active)return 1;
+    if(p->joinable){if(pthread_join(p->worker,NULL))return -1;p->joinable=0;}
     /* Publish the checked local settings before a potentially slow SMB scan.
      * The scan still re-reads and fences its own immutable generation. */
     if(p->settings_enabled){
         settings_sync(p);
         if(p->settings_status!=BW_SETUP_VALID){
             p->phase=p->settings_status<0?BACKEND_FAILED:BACKEND_NEEDS_SETUP;
-            p->stale=p->library.catalog.count>0;pthread_mutex_unlock(&p->lock);return 0;
+            p->stale=p->library.catalog.count>0;return 0;
         }
     }
     p->active=1;p->worker_kind=WORK_SCAN;p->phase=BACKEND_SCANNING;p->stale=p->library.catalog.count>0;
     int result=worker_start(&p->worker,scan,p);
-    if(result){p->active=0;p->phase=BACKEND_FAILED;}else p->joinable=1;pthread_mutex_unlock(&p->lock);return result?-1:0;
+    if(result){p->active=0;p->phase=BACKEND_FAILED;}else p->joinable=1;return result?-1:0;
+}
+static int refresh_unlocked(struct bw_native_backend *p){
+    if(!p||pthread_mutex_lock(&p->lock))return -1;int result=refresh_locked(p);pthread_mutex_unlock(&p->lock);return result;
 }
 int bw_native_backend_refresh(struct bw_native_backend *p){
     if(!p||pthread_mutex_lock(&p->dispatch_lock))return -1;
@@ -1068,7 +1144,6 @@ int bw_native_backend_destroy(struct bw_native_backend *p){
     pthread_mutex_unlock(&p->lock);if(bw_native_jobs_destroy(p->jobs))return -1;
     bw_native_library_destroy(&p->library);pthread_mutex_destroy(&p->dispatch_lock);pthread_mutex_destroy(&p->lock);bw_native_sensitive_clear(p,sizeof *p);free(p);return 0;
 }
-static const char *phase_name(int phase){static const char *names[]={"initial","scanning","ready","needs_setup","error","configuration_changed"};return names[phase];}
 static const char *phase_message(int phase){
     switch(phase){
         case BACKEND_SCANNING:return "Reading the library directly from the PC share.";
@@ -1434,6 +1509,11 @@ static void *prepare_worker(void *opaque){
 #endif
         if(clear_negative)revalidation_clear(p,prepared.game);
     }
+    native_logf("prepare %s: %s result=%d",p->sending.selection.run,result?"failed":"finished",result);
+    if(p->title_send.phase==TITLE_PREPARING&&!strcmp(p->title_send.job,p->sending.selection.run)){
+        char message[256];snprintf(message,sizeof message,result?"Preparation failed (result %d). Read jobs in /api/state.":"Preparation finished",result);
+        title_send_finish(p,result?TITLE_FAILED:TITLE_DONE,message);
+    }
     bw_native_sensitive_clear(&p->sending,sizeof p->sending);p->active=0;pthread_mutex_unlock(&p->lock);return NULL;
 }
 #ifdef BW_NATIVE_PRELOAD
@@ -1456,52 +1536,152 @@ static const char *send_registration_preflight(struct bw_native_backend *p,const
     free(rows);return reason;
 }
 #endif
-static int send_owned(struct bw_native_backend *p,const char *authority,const void *body,size_t size,const char *token,struct bw_native_response *out){
-    if(!p->ops.prepare||!p->settings_enabled)return text(out,409,"{\"error\":\"Native preparation is unavailable in this build\"}");
-    unsigned difference=0;if(!token||strlen(token)!=32)return text(out,403,"{\"error\":\"Refresh Blackwire before preparing a game\"}");
-    for(unsigned i=0;i<32;i++)difference|=(unsigned char)token[i]^(unsigned char)p->setup_token[i];if(difference)return text(out,403,"{\"error\":\"Refresh Blackwire before preparing a game\"}");
-    struct bw_native_send_request request;if(bw_native_send_request_parse(body,size,&request))return text(out,400,"{\"error\":\"Choose a game from the current library\"}");
-    struct bw_share_config config={0};struct bw_setup_generation generation={0};char accepted[192];int status=409,setup_only=0;const char *reply="{\"error\":\"Refresh the library before preparing this game\"}";
-    pthread_mutex_lock(&p->lock);settings_sync(p);
-    if(p->active){reply="{\"error\":\"Wait for the current operation to finish\"}";goto done;}
-    if(p->control_release_unknown){reply="{\"error\":\"A previous operation has an unconfirmed release. Resolve its status before Send.\"}";goto done;}
-    if(p->phase!=BACKEND_READY||p->stale||p->setup_blocked||p->preparation_blocked||p->settings_status!=BW_SETUP_VALID||request.library_generation!=p->generation||request.settings_revision!=p->settings_revision)goto done;
-    size_t item=catalog_selected(p,&request);
-    if(item==p->library.catalog.count||!bw_source_catalog_available(&p->library.catalog.items[item])){status=400;reply="{\"error\":\"Choose an available preserved source\"}";goto done;}
-    if(registration_waiting(p,p->library.catalog.items[item].title_id)){reply=p->registration_ledger_unknown?"{\"error\":\"Blackwire registration ownership could not be verified. No startup files were sent; keep existing copies and refresh status.\"}":"{\"error\":\"Registration cleanup is pending or needs attention; Send will not repeat it. No startup files were sent.\"}";goto done;}
-    if(removed_at(p,item)){reply="{\"error\":\"Restore this removed source before preparing it again\"}";goto done;}
-    if(source_build_reason(&p->library.catalog.items[item])){reply="{\"error\":\"This compressed image format is unsupported or could not be verified.\"}";goto done;}
-    if(p->library.prepared&&reader_update_reason(&p->library.prepared[item])){reply="{\"error\":\"The reader update is unresolved. Play and Send are blocked; startup files were kept.\"}";goto done;}
-    if(p->library.prepared&&(p->library.prepared[item].state==BW_PREPARED_INVALID||p->library.prepared[item].state==BW_PREPARED_UNKNOWN)){reply="{\"error\":\"Refresh and inspect this console copy before preparing it again\"}";goto done;}
+/* Caller holds p->lock. inline_worker: the calling scan worker runs
+ * prepare_worker itself after it releases the lock, on its own joinable
+ * thread. Returns the HTTP status; *reply is a JSON body. */
+static int send_locked(struct bw_native_backend *p,const char *authority,const struct bw_native_send_request *request,int inline_worker,char accepted[192],const char **reply){
+    struct bw_share_config config={0};struct bw_setup_generation generation={0};int status=409,setup_only=0;*reply="{\"error\":\"Refresh the library before preparing this game\"}";
+    settings_sync(p);
+    if(p->active){*reply="{\"error\":\"Wait for the current operation to finish\"}";goto done;}
+    if(p->control_release_unknown){*reply="{\"error\":\"A previous operation has an unconfirmed release. Resolve its status before Send.\"}";goto done;}
+    if(p->phase!=BACKEND_READY||p->stale||p->setup_blocked||p->preparation_blocked||p->settings_status!=BW_SETUP_VALID||request->library_generation!=p->generation||request->settings_revision!=p->settings_revision)goto done;
+    size_t item=catalog_selected(p,request);
+    if(item==p->library.catalog.count||!bw_source_catalog_available(&p->library.catalog.items[item])){status=400;*reply="{\"error\":\"Choose an available preserved source\"}";goto done;}
+    if(registration_waiting(p,p->library.catalog.items[item].title_id)){*reply=p->registration_ledger_unknown?"{\"error\":\"Blackwire registration ownership could not be verified. No startup files were sent; keep existing copies and refresh status.\"}":"{\"error\":\"Registration cleanup is pending or needs attention; Send will not repeat it. No startup files were sent.\"}";goto done;}
+    if(removed_at(p,item)){*reply="{\"error\":\"Restore this removed source before preparing it again\"}";goto done;}
+    if(source_build_reason(&p->library.catalog.items[item])){*reply="{\"error\":\"This compressed image format is unsupported or could not be verified.\"}";goto done;}
+    if(p->library.prepared&&reader_update_reason(&p->library.prepared[item])){*reply="{\"error\":\"The reader update is unresolved. Play and Send are blocked; startup files were kept.\"}";goto done;}
+    if(p->library.prepared&&(p->library.prepared[item].state==BW_PREPARED_INVALID||p->library.prepared[item].state==BW_PREPARED_UNKNOWN)){*reply="{\"error\":\"Refresh and inspect this console copy before preparing it again\"}";goto done;}
     if(p->library.prepared&&p->library.prepared[item].state==BW_PREPARED_VALID&&!p->library.prepared[item].startup_upgrade_required&&
        !revalidation_required(p,&p->library.prepared[item])){
 #ifdef BW_HOME_STARTUP
         if(p->ops.prepare==prepare&&item<BW_CATALOG_MAX_ITEMS&&p->home_ready[item]!=1)setup_only=1;
         else
 #endif
-        {reply="{\"error\":\"Startup files and dashboard setup are already ready. Choose Play.\"}";goto done;}
+        {*reply="{\"error\":\"Startup files and dashboard setup are already ready. Choose Play.\"}";goto done;}
     }
     int loaded=p->ops.read_settings(p->opaque,&config,&generation);settings_adopt(p,loaded,&config,&generation,1);
-    if(loaded!=BW_SETUP_VALID||request.settings_revision!=p->settings_revision||!bw_native_setup_generation_equal(&generation,&p->settings_generation))goto done;
-    if(p->joinable){if(pthread_join(p->worker,NULL)){status=503;goto done;}p->joinable=0;}
+    if(loaded!=BW_SETUP_VALID||request->settings_revision!=p->settings_revision||!bw_native_setup_generation_equal(&generation,&p->settings_generation))goto done;
+    if(!inline_worker&&p->joinable){if(pthread_join(p->worker,NULL)){status=503;goto done;}p->joinable=0;}
     if(!p->library.prepared){p->library.prepared=calloc(p->library.catalog.count,sizeof *p->library.prepared);if(!p->library.prepared){status=503;goto done;}}
     struct bw_native_prepare_selection selection={0};const struct bw_catalog_item *selected=&p->library.catalog.items[item];
     if(bw_source_catalog_binding(&selection.identity,&config,selected)){status=503;goto done;}
 #ifdef BW_NATIVE_PRELOAD
-    const char *ownership=send_registration_preflight(p,&selection.identity);if(ownership){reply=ownership;goto done;}
+    const char *ownership=send_registration_preflight(p,&selection.identity);if(ownership){*reply=ownership;goto done;}
 #endif
     if(p->ops.nonce(p->opaque,selection.run)||!nonce_valid(selection.run)){status=503;goto done;}
     selection.boot=selected->boot;selection.param=selected->param;selection.image=selected->image;selection.logical_boot_size=selected->logical_boot_size;selection.container_kind=selected->container_kind;struct bw_native_job_token job={0};
-    if(bw_native_job_begin(p->jobs,selection.run,selection.identity.binding.source,&job)||bw_native_job_start(&job)){status=503;reply="{\"error\":\"A private preparation operation could not start\"}";goto done;}
+    if(bw_native_job_begin(p->jobs,selection.run,selection.identity.binding.source,&job)||bw_native_job_start(&job)){status=503;*reply="{\"error\":\"A private preparation operation could not start\"}";goto done;}
     p->sending.config=config;p->sending.expected=generation;p->sending.selection=selection;p->sending.token=job;p->sending.item=item;p->preparation_changed=0;p->worker_kind=WORK_PREPARE;p->active=1;
     p->sending.setup_only=(unsigned)setup_only;
     if(setup_only)p->sending.retained=p->library.prepared[item];
     memset(p->sending.authority,0,33);if(authority&&p->preparation_idle)memcpy(p->sending.authority,authority,33);
-    if(worker_start(&p->worker,prepare_worker,p)){(void)bw_native_job_finish(&job,BW_JOB_FAILED);p->active=0;bw_native_sensitive_clear(&p->sending,sizeof p->sending);status=503;reply="{\"error\":\"The preparation worker could not start\"}";goto done;}
-    p->joinable=1;snprintf(accepted,sizeof accepted,"{\"ok\":true,\"jobId\":\"%s\",\"message\":\"%s\"}",selection.run,
-        setup_only?"Keeping startup files; finishing reader and PS5 dashboard setup":"Preparing startup files directly from the PC");status=202;reply=accepted;
+    if(!inline_worker){
+        if(worker_start(&p->worker,prepare_worker,p)){(void)bw_native_job_finish(&job,BW_JOB_FAILED);p->active=0;bw_native_sensitive_clear(&p->sending,sizeof p->sending);status=503;*reply="{\"error\":\"The preparation worker could not start\"}";goto done;}
+        p->joinable=1;
+    }
+    snprintf(accepted,192,"{\"ok\":true,\"jobId\":\"%s\",\"message\":\"%s\"}",selection.run,
+        setup_only?"Keeping startup files; finishing reader and PS5 dashboard setup":"Preparing startup files directly from the PC");status=202;*reply=accepted;
 done:
-    pthread_mutex_unlock(&p->lock);bw_share_clear(&config);bw_native_sensitive_clear(&request,sizeof request);return text(out,status,reply);
+    bw_share_clear(&config);return status;
+}
+/* The message of a {"error":"..."} reply, for the log and title status. */
+static void reply_message(char *out,size_t size,const char *reply){
+    const char *at=strstr(reply,"\"error\":\"");if(!at){at=strstr(reply,"\"message\":\"");if(at)at+=11;}else at+=9;
+    if(!at){snprintf(out,size,"%s",reply);return;}
+    const char *end=strchr(at,'"');snprintf(out,size,"%.*s",end?(int)(end-at):(int)strlen(at),at);
+}
+/* Available rows with this title ID. Returns the last match. */
+static size_t title_item(const struct bw_native_backend *p,const char *title,size_t *matches){
+    size_t found=p->library.catalog.count;*matches=0;
+    for(size_t i=0;i<p->library.catalog.count;i++){
+        const struct bw_catalog_item *item=p->library.catalog.items+i;
+        if(bw_source_catalog_available(item)&&!strcmp(item->title_id,title)&&!removed_at(p,i)){found=i;(*matches)++;}
+    }
+    return found;
+}
+static int title_request(const struct bw_native_backend *p,size_t item,struct bw_native_send_request *out){
+    struct bw_share_config config=p->nfs_settings;memcpy(config.server,p->server,sizeof config.server);
+    memcpy(config.share,p->share,sizeof config.share);memcpy(config.share2,p->share2,sizeof config.share2);
+    const struct bw_catalog_item *row=p->library.catalog.items+item;struct bw_provider_binding binding={0};
+    memset(out->source,0,sizeof out->source);memset(out->source_binding,0,sizeof out->source_binding);
+    int bad=bw_source_catalog_binding(&binding,&config,row);bw_share_clear(&config);if(bad)return -1;
+    snprintf(out->source,sizeof out->source,"%s",row->source);snprintf(out->source_binding,sizeof out->source_binding,"%s",binding.binding.game);
+    out->library_generation=p->generation;out->settings_revision=p->settings_revision;return 0;
+}
+static int title_named(const char *name,const char *title){
+    const char *dot=strrchr(name,'.');size_t n=strlen(title);
+    if(!dot||(size_t)(dot-name)!=n)return 0;
+    for(size_t i=0;i<n;i++){int a=(unsigned char)name[i],b=(unsigned char)title[i];if(a>='a'&&a<='z')a-=32;if(b>='a'&&b<='z')b-=32;if(a!=b)return 0;}
+    return 1;
+}
+static void title_send_finish(struct bw_native_backend *p,int phase,const char *message){
+    p->title_send.phase=phase;snprintf(p->title_send.message,sizeof p->title_send.message,"%s",message);
+    native_logf("send %s: %s",p->title_send.title,p->title_send.message);
+}
+/* Called by the targeted scan worker under p->lock, after p->active is
+ * cleared. Returns 1 when that worker must now run prepare_worker. */
+static int title_send_continue(struct bw_native_backend *p,int success){
+    if(!success){title_send_finish(p,TITLE_FAILED,*p->check_message?p->check_message:"The library check did not finish.");return 0;}
+    size_t matches=0,item=title_item(p,p->title_send.title,&matches);char message[256];
+    if(matches>1){title_send_finish(p,TITLE_FAILED,"This title ID matches more than one source. Send it with name and sourceBinding.");return 0;}
+    if(!matches){
+        for(size_t i=0;i<p->library.catalog.count;i++){
+            const struct bw_catalog_item *row=p->library.catalog.items+i;
+            if(!title_named(row->name,p->title_send.title))continue;
+            snprintf(message,sizeof message,"%s was found but is not usable: status=%s stage=%s error=%s",row->source,
+                bw_source_catalog_status(row),bw_source_catalog_stage_name(row),bw_source_catalog_error_name(row));
+            title_send_finish(p,TITLE_FAILED,message);return 0;
+        }
+        snprintf(message,sizeof message,"No game with title ID %s was found. Name the image %s.ffpfsc, or refresh the whole library.",p->title_send.title,p->title_send.title);
+        title_send_finish(p,TITLE_FAILED,message);return 0;
+    }
+    struct bw_native_send_request request={0};char accepted[192];const char *reply="{\"error\":\"The selected source binding is unavailable\"}";int status=503;
+    if(!title_request(p,item,&request))status=send_locked(p,NULL,&request,1,accepted,&reply);
+    bw_native_sensitive_clear(&request,sizeof request);
+    if(status!=202){reply_message(message,sizeof message,reply);title_send_finish(p,TITLE_FAILED,message);return 0;}
+    memcpy(p->title_send.job,p->sending.selection.run,sizeof p->title_send.job);
+    snprintf(message,sizeof message,"Preparing %s as job %s",p->library.catalog.items[item].source,p->title_send.job);
+    title_send_finish(p,TITLE_PREPARING,message);return 1;
+}
+static int send_title(struct bw_native_backend *p,const char *authority,struct bw_native_send_request *request,struct bw_native_response *out){
+    char accepted[192],message[256];const char *reply="{\"error\":\"Refresh the library before preparing this game\"}";int status=409;
+    pthread_mutex_lock(&p->lock);settings_sync(p);
+    size_t matches=0,item=title_item(p,request->title_id,&matches);int ready=p->phase==BACKEND_READY&&!p->stale;
+    if(ready&&matches>1){reply="{\"error\":\"This title ID matches more than one source. Send it with name and sourceBinding.\"}";goto done;}
+    if(ready&&matches==1){
+        if(title_request(p,item,request)){status=503;reply="{\"error\":\"The selected source binding is unavailable\"}";}
+        else status=send_locked(p,authority,request,0,accepted,&reply);
+        goto done;
+    }
+    /* Not ready, or a new image: check just this title, then prepare. */
+    if(authority)goto done;
+    if(p->active){reply="{\"error\":\"Wait for the current operation to finish\"}";goto done;}
+    if(p->control_release_unknown||p->setup_blocked||p->preparation_blocked){reply="{\"error\":\"A previous operation needs attention. Read /api/state before Send.\"}";goto done;}
+    if(!p->settings_enabled||p->settings_status!=BW_SETUP_VALID){reply="{\"error\":\"Complete Blackwire setup before preparing a game\"}";goto done;}
+    memset(&p->title_send,0,sizeof p->title_send);memcpy(p->title_send.title,request->title_id,sizeof p->title_send.title);
+    p->title_send.phase=TITLE_CHECKING;snprintf(p->title_send.message,sizeof p->title_send.message,"Checking this game on the PC");
+    int started=refresh_locked(p);
+    if(started||!p->active){
+        p->title_send.phase=TITLE_FAILED;snprintf(p->title_send.message,sizeof p->title_send.message,"The library check could not start");
+        status=started==1?409:503;reply=started==1?"{\"error\":\"Wait for the current operation to finish\"}":"{\"error\":\"The library check could not start\"}";goto done;
+    }
+    snprintf(accepted,sizeof accepted,"{\"ok\":true,\"titleId\":\"%s\",\"message\":\"Checking this game on the PC before preparing it. Follow GET /api/log.\"}",request->title_id);
+    status=202;reply=accepted;
+done:
+    reply_message(message,sizeof message,reply);native_logf("send %s: HTTP %d %s",request->title_id,status,message);
+    pthread_mutex_unlock(&p->lock);bw_native_sensitive_clear(request,sizeof *request);return text(out,status,reply);
+}
+static int send_owned(struct bw_native_backend *p,const char *authority,const void *body,size_t size,const char *token,struct bw_native_response *out){
+    if(!p->ops.prepare||!p->settings_enabled)return text(out,409,"{\"error\":\"Native preparation is unavailable in this build\"}");
+    unsigned difference=0;if(!token||strlen(token)!=32)return text(out,403,"{\"error\":\"Refresh Blackwire before preparing a game\"}");
+    for(unsigned i=0;i<32;i++)difference|=(unsigned char)token[i]^(unsigned char)p->setup_token[i];if(difference)return text(out,403,"{\"error\":\"Refresh Blackwire before preparing a game\"}");
+    struct bw_native_send_request request;if(bw_native_send_request_parse(body,size,&request))return text(out,400,"{\"error\":\"Choose a game from the current library\"}");
+    if(*request.title_id)return send_title(p,authority,&request,out);
+    char accepted[192],message[256];const char *reply=NULL;
+    pthread_mutex_lock(&p->lock);int status=send_locked(p,authority,&request,0,accepted,&reply);
+    reply_message(message,sizeof message,reply);native_logf("send %.80s: HTTP %d %s",request.source,status,message);
+    pthread_mutex_unlock(&p->lock);bw_native_sensitive_clear(&request,sizeof request);return text(out,status,reply);
 }
 static int send(struct bw_native_backend *p,const void *body,size_t size,const char *token,struct bw_native_response *out){return send_owned(p,NULL,body,size,token,out);}
 #include "native_backend_removal.h"
@@ -1746,10 +1926,40 @@ static int cover(struct bw_native_backend *p,const char *query,struct bw_native_
     }
     pthread_mutex_unlock(&p->lock);return result==1?text(out,404,"{\"error\":\"Cover unavailable\"}"):result;
 }
+static int log_document(struct bw_native_backend *p,struct bw_native_response *out){
+    static const char *const title_phases[]={"idle","checking","preparing","done","failed"};
+    struct bw_json json={.maximum=256u*1024u};bw_json_text(&json,"{\"lines\":[");
+    if(pthread_mutex_lock(&native_log_ring.lock))return -1;
+    uint64_t written=native_log_ring.written,first=written>NATIVE_LOG_LINES?written-NATIVE_LOG_LINES:0;
+    for(uint64_t n=first;n<written;n++){
+        unsigned slot=(unsigned)(n%NATIVE_LOG_LINES);
+        bw_json_format(&json,"%s{\"seq\":%llu,\"t\":%.3f,\"text\":",n>first?",":"",(unsigned long long)n+1,native_log_ring.at[slot]);
+        bw_json_string(&json,native_log_ring.text[slot]);bw_json_text(&json,"}");
+    }
+    pthread_mutex_unlock(&native_log_ring.lock);
+    bw_json_format(&json,"],\"dropped\":%llu,\"lastFailure\":",(unsigned long long)first);
+    pthread_mutex_lock(&p->lock);
+    if(*p->last_failure.message){
+        bw_json_text(&json,"{\"runId\":");bw_json_string(&json,p->last_failure.run);bw_json_text(&json,",\"game\":");bw_json_string(&json,p->last_failure.game);
+        bw_json_text(&json,",\"message\":");bw_json_string(&json,p->last_failure.message);bw_json_text(&json,"}");
+    }else bw_json_text(&json,"null");
+    bw_json_text(&json,",\"titleSend\":");
+    if(p->title_send.phase){
+        bw_json_text(&json,"{\"titleId\":");bw_json_string(&json,p->title_send.title);bw_json_text(&json,",\"phase\":");bw_json_string(&json,title_phases[p->title_send.phase]);
+        bw_json_text(&json,",\"jobId\":");bw_json_string(&json,p->title_send.job);bw_json_text(&json,",\"message\":");bw_json_string(&json,p->title_send.message);bw_json_text(&json,"}");
+    }else bw_json_text(&json,"null");
+    bw_json_text(&json,",\"library\":{\"phase\":");bw_json_string(&json,phase_name(p->phase));
+    bw_json_format(&json,",\"generation\":%llu,\"stale\":%s,\"items\":%zu,\"lastScan\":{\"success\":%s,\"reused\":%u,\"validated\":%u,\"deferred\":%u,\"requests\":%u,\"contentBytes\":%llu,\"seconds\":%.1f},\"message\":",
+        (unsigned long long)p->generation,p->stale?"true":"false",p->library.catalog.count,p->last_scan.success?"true":"false",p->last_scan.reused,p->last_scan.validated,
+        p->last_scan.deferred,p->last_scan.requests,(unsigned long long)p->last_scan.content_bytes,p->last_scan.seconds);
+    bw_json_string(&json,p->check_message);bw_json_text(&json,"}}");pthread_mutex_unlock(&p->lock);
+    if(json.bad){free(json.bytes);return -1;}*out=(struct bw_native_response){200,"application/json; charset=utf-8",json.bytes,json.used};return 0;
+}
 static int handle_core(struct bw_native_backend *p,const char *owner,const char *method,const char *url,const void *body,size_t size,const char *token,struct bw_native_response *out){
     if(!p||!method||!url||!out||(!body&&size))return -1;memset(out,0,sizeof *out);
     if(!strcmp(method,"GET")&&!strcmp(url,"/api/state")){if(state(p,out))return text(out,503,"{\"error\":\"Library status could not be serialized\"}");return 0;}
     if(!strcmp(method,"GET")&&!strncmp(url,"/cover?",7))return cover(p,url+7,out);
+    if(!strcmp(method,"GET")&&!strcmp(url,"/api/log")){if(log_document(p,out))return text(out,503,"{\"error\":\"The log could not be serialized\"}");return 0;}
     if(!strcmp(method,"POST")&&!strcmp(url,"/api/setup"))return setup(p,body,size,token,out);
     if(!strcmp(method,"POST")&&!strcmp(url,"/api/send"))return owner?send_owned(p,owner,body,size,token,out):send(p,body,size,token,out);
     if(!strcmp(method,"POST")&&!strcmp(url,"/api/uninstall"))return removal_action(p,owner,body,size,token,0,out);

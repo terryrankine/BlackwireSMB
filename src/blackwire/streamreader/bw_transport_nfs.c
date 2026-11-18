@@ -63,13 +63,16 @@ static void nfs_tp_destroy(void *context){
 static uint32_t nfs_entry_type(uint32_t type){
     return type==BW_NF_REG?BW_TP_FILE:type==BW_NF_DIR?BW_TP_DIRECTORY:type==BW_NF_LNK?BW_TP_LINK:BW_TP_SPECIAL;
 }
+/* Identity only. The catalog validates each image inside the listing
+ * callback, so a copy into the same folder moves its times during the read.
+ * Callers that need the folder's contents unchanged (the game tree walk)
+ * compare its full metadata themselves. */
 static int nfs_same_directory(const struct bw_stat *a,const struct bw_stat *b){
-    return a->type==BW_TP_DIRECTORY&&b->type==BW_TP_DIRECTORY&&a->ino==b->ino&&a->mtime==b->mtime&&
-        a->mtime_nsec==b->mtime_nsec&&a->ctime==b->ctime&&a->ctime_nsec==b->ctime_nsec;
+    return a->type==BW_TP_DIRECTORY&&b->type==BW_TP_DIRECTORY&&a->ino==b->ino;
 }
 /* nfs_opendir follows links, so the directory is lstat'ed before and after
- * the read. A link, a different object or a change during the read is
- * refused. The directory cache is off, so the read is fresh. */
+ * the read. A link or a different object is refused. The directory cache is
+ * off, so the read is fresh. */
 static int nfs_tp_list(void *context,const char *path,bw_tp_dirent_fn fn,void *opaque){
     struct bw_nfs_context *c=context;char full[2*sizeof c->root+2];struct bw_stat before,after;struct nfsdir *dir=NULL;
     int result=nfs_full(c,path,full,sizeof full);if(result)return result;

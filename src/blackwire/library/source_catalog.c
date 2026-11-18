@@ -43,6 +43,15 @@ void bw_source_catalog_image_hash(const struct bw_stat *p,uint8_t out[32]){
 /* Existing callers use this as a boolean; -2 additionally preserves a proven
  * deadline expiry instead of labelling it a changed image generation. */
 static int live(const struct bw_source *p){struct timespec at;if(!bw_source_connected(p)||clock_gettime(CLOCK_MONOTONIC,&at))return -1;return ((double)at.tv_sec+(double)at.tv_nsec/1e9)>=p->deadline?-2:0;}
+/* Budgets follow progress, never one total for the whole folder. An image
+ * check fails on its own when no namespace step arrives within the stall
+ * time, or when it runs past its limit. The listing and the next image then
+ * get a fresh step budget. Tests may lower these. */
+double bw_catalog_image_stall_seconds=120,bw_catalog_image_limit_seconds=1800,bw_catalog_step_seconds=180;
+static double clock_now(void){struct timespec at;return clock_gettime(CLOCK_MONOTONIC,&at)?0:(double)at.tv_sec+(double)at.tv_nsec/1e9;}
+static void image_progress(struct bw_source *p,double started){
+    double next=clock_now()+bw_catalog_image_stall_seconds,limit=started+bw_catalog_image_limit_seconds;p->deadline=next<limit?next:limit;
+}
 static int listed_time(uint64_t ticks,uint64_t seconds,uint64_t nsec){
     const uint64_t epoch=UINT64_C(116444736000000000);
     return ticks>=epoch&&(ticks-epoch)/10000000==seconds&&((ticks-epoch)%10000000)/10==nsec/1000;
@@ -64,11 +73,12 @@ static int image_access_refused(const struct bw_container_smb *image){
         (image->first_failure_result==-EACCES||image->first_failure_result==-EPERM);
 }
 struct candidate {char source[1024],name[241];struct bw_source_info info;unsigned depth;};
-struct scan {struct bw_source *source;struct bw_source_catalog *catalog;struct candidate *pending;size_t count,capacity;const char *relative;unsigned depth;};
-struct logical_metadata {struct bw_source *source;struct bw_pfs_inode boot,param,icon;size_t path_bytes;uint32_t files;int error,expired;};
+struct scan {struct bw_source *source;struct bw_source_catalog *catalog;struct candidate *pending;size_t count,capacity;const char *relative;unsigned depth;struct bw_catalog_reuse *reuse;};
+struct logical_metadata {struct bw_source *source;struct bw_pfs_inode boot,param,icon;size_t path_bytes;uint32_t files;int error,expired;double started;};
 static int logical(void *opaque,const char *path,const struct bw_pfs_inode *node){
     struct logical_metadata *p=opaque;
     int state=live(p->source);if(state){p->error=BW_CONTAINER_STALE;p->expired=state==-2;return -1;}
+    if(p->started>0)image_progress(p->source,p->started);
     size_t length=strnlen(path,BW_MANIFEST_MAX_PATH+1u);
     if(bw_manifest_validate_path(path,length)){p->error=BW_PFS_PATH;return -1;}
     if(bw_source_excluded(path))return 0;
@@ -81,26 +91,37 @@ static int logical(void *opaque,const char *path,const struct bw_pfs_inode *node
     if(!strcmp(path,"sce_sys/icon0.png"))p->icon=*node;
     return 0;
 }
+/* The image's own metadata moved while it was checked: a copy still running,
+ * or a replaced file. Only this row stays unverified. A transport failure, a
+ * short read, a lost connection or the scan deadline still discard the scan. */
+static int image_changed(const struct bw_source *source,const struct bw_container_smb *image,int result){
+    return result==BW_CONTAINER_STALE&&!image->last_transport_error&&!live(source)&&
+        image->first_failure_operation==BW_IMAGE_FAILURE_GENERATION_METADATA;
+}
 static int inspect_image(struct scan *scan,const struct candidate *candidate,struct bw_catalog_item *item){
-    struct bw_source *source=scan->source;struct bw_container_smb *image=calloc(1,sizeof *image);uint8_t *json=NULL;int result=-1,bad=0;
+    struct bw_source *source=scan->source;struct bw_container_smb *image=calloc(1,sizeof *image);uint8_t *json=NULL;int result=-1,bad=0,changed=0,timed_out=0;
     if(!image)return fail(scan->catalog,"catalog_image_allocation_failed");
+    double started=clock_now();image_progress(source,started);
     if(live(source)){bad=fail(scan->catalog,"catalog_image_scan_expired");goto done;}
     item->container_stage=BW_CATALOG_IMAGE_SIZE;
     if(candidate->info.size<48||candidate->info.size>BW_PFS_MAX_VOLUME){result=BW_PFS_UNSUPPORTED;goto done;}
     item->container_stage=BW_CATALOG_IMAGE_OPEN;
     result=bw_source_open_image(source,image,candidate->source);
+    if(image_changed(source,image,result)){changed=1;goto done;}
     if(result==BW_PFS_IO||result==BW_CONTAINER_STALE){bad=fail(scan->catalog,
         image_access_refused(image)?"catalog_image_access_refused":"catalog_image_generation_or_io_failed");goto done;}
-    if(!listed_image(&candidate->info,&image->admitted)){item->container_stage=BW_CATALOG_IMAGE_LISTING;bad=fail(scan->catalog,"catalog_image_listing_changed");goto done;}
+    if(!listed_image(&candidate->info,&image->admitted)){item->container_stage=BW_CATALOG_IMAGE_LISTING;result=BW_CONTAINER_STALE;changed=1;goto done;}
     item->image=image->admitted;bw_source_catalog_image_hash(&item->image,item->image_sha256);
     item->container_kind=image->container.kind;
     if(result)goto done;
     item->container_stage=BW_CATALOG_IMAGE_NAMESPACE;
-    struct logical_metadata metadata={.source=source};result=bw_container_walk(&image->container,logical,&metadata,NULL);
+    struct logical_metadata metadata={.source=source,.started=started};result=bw_container_walk(&image->container,logical,&metadata,NULL);
     item->namespace_files=metadata.files;item->namespace_path_bytes=(uint32_t)metadata.path_bytes;
     if(metadata.error)result=metadata.error;
-    if(metadata.expired)bad=fail(scan->catalog,"catalog_image_scan_expired");
+    /* A slow image fails alone; the scan goes on to the next entry. */
+    if(metadata.expired){timed_out=1;result=BW_CONTAINER_CANCELED;}
     if(result)goto done;
+    image_progress(source,started);
     item->container_stage=BW_CATALOG_IMAGE_BOOT;
     if(!metadata.boot.id||!metadata.boot.logical_size||metadata.boot.logical_size>UINT64_C(2147483648)){result=BW_PFS_FORMAT;goto done;}
     item->container_stage=BW_CATALOG_IMAGE_PARAM;
@@ -113,7 +134,7 @@ static int inspect_image(struct scan *scan,const struct candidate *candidate,str
     if(bw_source_param_metadata(json,(size_t)metadata.param.logical_size,item->title_id,item->title,sizeof item->title)){
         result=BW_PFS_FORMAT;goto done;
     }
-    if(live(source)){bad=fail(scan->catalog,"catalog_image_scan_expired");goto done;}
+    {int state=live(source);if(state==-2){timed_out=1;result=BW_CONTAINER_CANCELED;goto done;}if(state){bad=fail(scan->catalog,"catalog_image_scan_expired");goto done;}}
     item->container_stage=BW_CATALOG_IMAGE_GENERATION;
     result=bw_container_validate(&image->container);if(result)goto done;
     item->logical_boot_size=metadata.boot.logical_size;item->state=BW_CATALOG_CONTAINER_READY;
@@ -130,7 +151,8 @@ done:
     /* open() closes a refused format itself; retain any close/transport error
      * from that path too, and discard this whole partially scanned library. */
     if(image->last_transport_error)bad=fail(scan->catalog,"catalog_image_transport_failed");
-    if(result==BW_PFS_IO||result==BW_CONTAINER_STALE)bad=fail(scan->catalog,image_access_refused(image)?"catalog_image_access_refused":"catalog_image_generation_or_io_failed");
+    if(!bad&&image_changed(source,image,result))changed=1;
+    if(!changed&&!timed_out&&(result==BW_PFS_IO||result==BW_CONTAINER_STALE))bad=fail(scan->catalog,image_access_refused(image)?"catalog_image_access_refused":"catalog_image_generation_or_io_failed");
     if(bad&&!scan->catalog->failure.source[0]){
         struct bw_catalog_failure *failure=&scan->catalog->failure;
         memcpy(failure->source,candidate->source,strlen(candidate->source)+1);
@@ -139,7 +161,7 @@ done:
         failure->container_result=result;failure->transport_result=image->first_failure_result;
         failure->transport_result_known=image->first_failure_result_known;
     }
-    if(bad)bw_send_log("catalog-image-failure",
+    if(bad||changed||timed_out)bw_send_log("catalog-image-failure",
         "path=%.1023s stage=%s containerResult=%d containerError=%s catalogReason=%.128s transportResult=%d "
         "connectionPresent=%u containerKind=%d decoderResult=%d imageFailed=%d reads=%llu readBytes=%llu generationChecks=%llu namespaceFiles=%u deadline=%.6f",
         candidate->source,bw_source_catalog_stage_name(item),result,bw_source_catalog_error_name(item),
@@ -148,6 +170,7 @@ done:
         (unsigned long long)image->read_calls,(unsigned long long)image->read_bytes,
         (unsigned long long)image->generation_checks,item->namespace_files,source->deadline);
     if(result){memset(item->title_id,0,sizeof item->title_id);memset(item->title,0,sizeof item->title);item->logical_boot_size=0;}
+    source->deadline=clock_now()+bw_catalog_step_seconds;
     free(json);free(image);return bad;
 }
 int bw_source_catalog_container_cover(struct bw_source *source,const struct bw_catalog_item *item,size_t limit,void **out,size_t *size){
@@ -177,6 +200,32 @@ done:
     free(image);return result;
 }
 static int component(const char *name){size_t n=strlen(name);return n&&n<=240&&!strchr(name,'/')&&!bw_manifest_validate_path(name,n);}
+static int lower(int c){return c>='A'&&c<='Z'?c+32:c;}
+/* A targeted check names its image <titleId>.<extension>, any letter case. */
+static int named_title(const char *name,const char *title){
+    const char *dot=strrchr(name,'.');size_t n=strlen(title);
+    if(!dot||(size_t)(dot-name)!=n)return 0;
+    for(size_t i=0;i<n;i++)if(lower((unsigned char)name[i])!=lower((unsigned char)title[i]))return 0;
+    return 1;
+}
+static int same_share(const struct bw_catalog_item *row,const char *share){return !strcmp(row->source_share,share?share:"");}
+/* Same rule inspect_image applies between the listing and the opened image:
+ * the listing must still describe the exact generation that was validated. */
+static const struct bw_catalog_item *reusable(const struct bw_catalog_reuse *reuse,const struct candidate *c){
+    if(!reuse)return NULL;
+    for(size_t i=0;i<reuse->count;i++){
+        const struct bw_catalog_item *row=reuse->items+i;
+        if(row->state==BW_CATALOG_CONTAINER_READY&&!strcmp(row->source,c->source)&&same_share(row,reuse->share)&&listed_image(&c->info,&row->image))return row;
+    }
+    return NULL;
+}
+size_t bw_source_catalog_reuse_find(const struct bw_catalog_item *rows,size_t count,const struct bw_catalog_item *item){
+    if(!rows||!item||item->state!=BW_CATALOG_CONTAINER_READY)return count;
+    for(size_t i=0;i<count;i++)
+        if(rows[i].state==BW_CATALOG_CONTAINER_READY&&!strcmp(rows[i].source,item->source)&&!strcmp(rows[i].source_share,item->source_share)&&
+           !memcmp(rows[i].image_sha256,item->image_sha256,sizeof item->image_sha256))return i;
+    return count;
+}
 static int image(const char *name){
     char extension[16];const char *dot=strrchr(name,'.');if(!dot||strlen(dot)>=sizeof extension)return 0;
     for(size_t i=0;i<=strlen(dot);i++){unsigned char c=(unsigned char)dot[i];extension[i]=(char)(c>='A'&&c<='Z'?c+32:c);}
@@ -204,7 +253,12 @@ static int visit(void *opaque,const char *name,const struct bw_source_info *info
     memcpy(c.name,name,strlen(name)+1);
     if(info->attributes&0x440u){struct bw_catalog_item *e=item(out,&c);if(!e)return -1;e->state=BW_CATALOG_BLOCKED;return 0;}
     if(!(info->attributes&0x10u)){
-        if(image(name)){struct bw_catalog_item *e=item(out,&c);if(!e)return -1;e->state=BW_CATALOG_CONTAINER;e->container_bytes=info->size;return inspect_image(p,&c,e);}
+        if(image(name)){struct bw_catalog_item *e=item(out,&c);if(!e)return -1;e->state=BW_CATALOG_CONTAINER;e->container_bytes=info->size;
+            const struct bw_catalog_item *known=reusable(p->reuse,&c);
+            if(known){*e=*known;e->container_bytes=info->size;p->reuse->reused++;return 0;}
+            if(p->reuse&&p->reuse->only&&!named_title(name,p->reuse->only)){p->reuse->deferred++;return 0;}
+            if(p->reuse)p->reuse->validated++;
+            return inspect_image(p,&c,e);}
         else out->skipped++;
         return 0;
     }
@@ -236,9 +290,11 @@ static int compare(const void *a,const void *b){
     while(*x&&*y){unsigned l=*x++,r=*y++;if(l>='A'&&l<='Z')l+=32;if(r>='A'&&r<='Z')r+=32;if(l!=r)return l<r?-1:1;}
     return *x?1:*y?-1:0;
 }
-int bw_source_catalog_scan(struct bw_source *source,struct bw_source_catalog *out){
-    if(!source||!out)return -1;
-    memset(out,0,sizeof *out);struct scan scan={.source=source,.catalog=out,.relative=""};
+int bw_source_catalog_scan(struct bw_source *source,struct bw_source_catalog *out){return bw_source_catalog_scan_reusing(source,NULL,out);}
+int bw_source_catalog_scan_reusing(struct bw_source *source,struct bw_catalog_reuse *reuse,struct bw_source_catalog *out){
+    if(!source||!out||(reuse&&reuse->count&&!reuse->items))return -1;
+    if(reuse)reuse->reused=reuse->validated=reuse->deferred=0;
+    memset(out,0,sizeof *out);struct scan scan={.source=source,.catalog=out,.relative="",.reuse=reuse};
     int bad=bw_source_list(source,"",visit,&scan);out->collections=1;
     for(size_t i=0;!bad&&i<scan.count;i++){
         /* visit() may grow pending; do not retain a pointer into that array. */

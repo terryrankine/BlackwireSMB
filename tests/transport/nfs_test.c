@@ -127,6 +127,101 @@ static void image_cases(void){
     C(!bw_container_smb_close(&image));nfs_fake.stale_fstat=0;bw_source_release(&s);
 }
 
+/* A copy job writing into the scanned images folder. */
+static char images_dir[2048];
+static unsigned copy_steps,touch_beta;
+static void copy_step(void){
+    char path[4096];copy_steps++;
+    /* Grow the in-progress copy and move its times. */
+    snprintf(path,sizeof path,"%s/Gamma.ffpfsc.partial",images_dir);FILE *f=fopen(path,"ab");C(f);fputc('x',f);C(!fclose(f));
+    struct timeval times[2]={{(time_t)copy_steps,0},{(time_t)(1000+copy_steps),0}};C(!utimes(path,times));
+    /* Create and remove a sibling: the folder's own mtime and ctime move. */
+    snprintf(path,sizeof path,"%s/Delta.ffpfsc.partial",images_dir);
+    if(copy_steps&1){f=fopen(path,"wb");C(f);C(!fclose(f));}else C(!unlink(path));
+    if(touch_beta&&copy_steps==touch_beta){
+        snprintf(path,sizeof path,"%s/Beta.ffpfsc",images_dir);struct stat st;C(!stat(path,&st));
+        struct timeval moved[2]={{st.st_atim.tv_sec,0},{st.st_mtim.tv_sec+7,0}};C(!utimes(path,moved));
+    }
+}
+static void copy_cases(void){
+    snprintf(images_dir,sizeof images_dir,"%s/volume1/public/emulation/ps5/games/images",base);
+    char partial[4096],delta[4096];snprintf(partial,sizeof partial,"%s/Gamma.ffpfsc.partial",images_dir);
+    snprintf(delta,sizeof delta,"%s/Delta.ffpfsc.partial",images_dir);
+    struct stat before;C(!stat(partial,&before));
+    /* A growing .partial and a churning folder leave the scan ready. */
+    nfs_fake_reset(base);struct bw_source s;nfs_source(&s,"emulation/ps5/games/images");
+    copy_steps=0;touch_beta=0;nfs_fake.on_pread=copy_step;
+    struct bw_source_catalog catalog;C(!bw_source_catalog_scan(&s,&catalog));
+    struct stat after;C(!stat(partial,&after));C(copy_steps>2&&after.st_size>before.st_size);
+    const struct bw_catalog_item *beta=find(&catalog,"Beta.ffpfsc");
+    C(beta&&beta->state==BW_CATALOG_CONTAINER_READY&&!catalog.error&&!s.error&&bw_source_connected(&s));
+    C(!find(&catalog,"Gamma.ffpfsc.partial")&&!find(&catalog,"Delta.ffpfsc.partial"));
+    struct bw_catalog_item first=*beta;bw_source_catalog_destroy(&catalog);
+    /* The candidate itself changing marks that row only. */
+    copy_steps=0;touch_beta=2;
+    C(!bw_source_catalog_scan(&s,&catalog));beta=find(&catalog,"Beta.ffpfsc");
+    C(beta&&beta->state==BW_CATALOG_CONTAINER&&beta->container_error==BW_CONTAINER_STALE&&!catalog.error&&!s.error);
+    C(!*beta->title_id&&find(&catalog,"Linked.ffpfsc")->state==BW_CATALOG_BLOCKED);
+    bw_source_catalog_destroy(&catalog);nfs_fake.on_pread=NULL;touch_beta=0;
+    if(!access(delta,F_OK))C(!unlink(delta));
+    /* Fresh full scan, then an unchanged image is reused without opening it. */
+    C(!bw_source_catalog_scan(&s,&catalog));first=*find(&catalog,"Beta.ffpfsc");C(first.state==BW_CATALOG_CONTAINER_READY);
+    struct bw_catalog_reuse reuse={.items=catalog.items,.count=catalog.count};
+    unsigned opens=nfs_fake.opens,preads=nfs_fake.preads;struct bw_source_catalog again;
+    C(!bw_source_catalog_scan_reusing(&s,&reuse,&again)&&reuse.reused==1&&reuse.validated==0&&reuse.deferred==0);
+    C(nfs_fake.opens==opens&&nfs_fake.preads==preads);
+    beta=find(&again,"Beta.ffpfsc");C(beta&&beta->state==BW_CATALOG_CONTAINER_READY&&!memcmp(beta->image_sha256,first.image_sha256,32)&&!strcmp(beta->title_id,"PPSA09999"));
+    C(bw_source_catalog_reuse_find(catalog.items,catalog.count,beta)<catalog.count);
+    /* Rows of another share are never borrowed. */
+    struct bw_catalog_reuse other={.items=catalog.items,.count=catalog.count,.share="elsewhere"};struct bw_source_catalog third;
+    C(!bw_source_catalog_scan_reusing(&s,&other,&third)&&other.reused==0&&other.validated==1);bw_source_catalog_destroy(&third);
+    /* A changed image is validated again. */
+    char image[4096];snprintf(image,sizeof image,"%s/Beta.ffpfsc",images_dir);struct stat st;C(!stat(image,&st));
+    struct timeval moved[2]={{st.st_atim.tv_sec,0},{st.st_mtim.tv_sec+11,0}};C(!utimes(image,moved));
+    opens=nfs_fake.opens;C(!bw_source_catalog_scan_reusing(&s,&reuse,&third)&&reuse.reused==0&&reuse.validated==1&&nfs_fake.opens>opens);
+    beta=find(&third,"Beta.ffpfsc");C(beta->state==BW_CATALOG_CONTAINER_READY&&memcmp(beta->image_sha256,first.image_sha256,32));
+    bw_source_catalog_destroy(&third);
+    /* A removed image is dropped. */
+    char moved_name[4096];snprintf(moved_name,sizeof moved_name,"%s/Beta.hidden",images_dir);C(!rename(image,moved_name));
+    C(!bw_source_catalog_scan_reusing(&s,&reuse,&third)&&!find(&third,"Beta.ffpfsc")&&!reuse.reused);bw_source_catalog_destroy(&third);
+    C(!rename(moved_name,image));
+    /* A targeted check validates only <titleId>.<ext>; others stay unchecked. */
+    struct bw_catalog_reuse only={.only="PPSA00001"};opens=nfs_fake.opens;
+    C(!bw_source_catalog_scan_reusing(&s,&only,&third)&&only.deferred==1&&only.validated==0&&nfs_fake.opens==opens);
+    beta=find(&third,"Beta.ffpfsc");C(beta->state==BW_CATALOG_CONTAINER&&beta->container_stage==BW_CATALOG_IMAGE_NOT_CHECKED&&!beta->container_error);
+    C(!strcmp(bw_source_catalog_status(beta),"container_unverified"));bw_source_catalog_destroy(&third);
+    struct bw_catalog_reuse named={.only="bEtA"};
+    C(!bw_source_catalog_scan_reusing(&s,&named,&third)&&named.validated==1&&find(&third,"Beta.ffpfsc")->state==BW_CATALOG_CONTAINER_READY);
+    bw_source_catalog_destroy(&third);
+    bw_source_catalog_destroy(&again);bw_source_catalog_destroy(&catalog);bw_source_release(&s);
+}
+
+/* Many images, one slow: the library is ready and only that one fails. */
+static void slow_cases(void){
+    char many[2048],path[4096],beta[4096];snprintf(many,sizeof many,"%s/volume1/public/emulation/ps5/games/many",base);
+    snprintf(beta,sizeof beta,"%s/volume1/public/emulation/ps5/games/images/Beta.ffpfsc",base);
+    C(!mkdir(many,0755));FILE *in=fopen(beta,"rb");C(in);static uint8_t bytes[1u<<20];size_t size=fread(bytes,1,sizeof bytes,in);C(size>0&&size<sizeof bytes&&!fclose(in));
+    for(unsigned i=0;i<16;i++){
+        snprintf(path,sizeof path,"%s/%s%02u.ffpfsc",many,i==9?"Slow":"Game",i);FILE *out=fopen(path,"wb");C(out);C(fwrite(bytes,1,size,out)==size&&!fclose(out));
+    }
+    double stall=bw_catalog_image_stall_seconds,limit=bw_catalog_image_limit_seconds,step=bw_catalog_step_seconds;
+    /* Each image may stall 2 s; the slow one stalls 3 s; the whole folder
+     * runs far past one image's budget, so no total budget may apply. */
+    bw_catalog_image_stall_seconds=2;bw_catalog_image_limit_seconds=2.5;bw_catalog_step_seconds=2;
+    nfs_fake_reset(base);snprintf(nfs_fake.slow_name,sizeof nfs_fake.slow_name,"Slow09.ffpfsc");nfs_fake.slow_ms=3000;
+    struct bw_source s;nfs_source(&s,"emulation/ps5/games/many");s.deadline=now()+1;
+    double started=now();struct bw_source_catalog catalog;C(!bw_source_catalog_scan(&s,&catalog));
+    C(now()-started>=3&&catalog.count==16&&!catalog.error&&!s.error&&bw_source_connected(&s));
+    unsigned ready=0;
+    for(size_t i=0;i<catalog.count;i++){
+        const struct bw_catalog_item *row=catalog.items+i;
+        if(!strcmp(row->source,"Slow09.ffpfsc"))C(row->state==BW_CATALOG_CONTAINER&&row->container_error==BW_CONTAINER_CANCELED&&!*row->title_id);
+        else{C(row->state==BW_CATALOG_CONTAINER_READY);ready++;}
+    }
+    C(ready==15);bw_source_catalog_destroy(&catalog);bw_source_release(&s);
+    bw_catalog_image_stall_seconds=stall;bw_catalog_image_limit_seconds=limit;bw_catalog_step_seconds=step;
+}
+
 /* Shared neutral scenarios over any source. */
 struct names {char text[4096];};
 static int names_visit(void *opaque,const char *name,const struct bw_source_info *info){
@@ -199,6 +294,8 @@ int main(int argc,char **argv){
     C(argc==2);snprintf(base,sizeof base,"%s",argv[1]);
     connect_cases();
     image_cases();
+    copy_cases();
+    slow_cases();
     neutral_cases();
     printf("{\"nfs\":%u}\n",checks);
     return 0;

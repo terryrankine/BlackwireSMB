@@ -59,6 +59,26 @@ struct bw_source_catalog {
  * Partial/failed results must be discarded by the caller. No preparation,
  * registration, game launch, source writes or console writes. */
 int bw_source_catalog_scan(struct bw_source *,struct bw_source_catalog *);
+/* Progress budgets in seconds: an image check fails alone after this stall
+ * or this total; the listing gets a fresh step budget after each image. */
+extern double bw_catalog_image_stall_seconds,bw_catalog_image_limit_seconds,bw_catalog_step_seconds;
+/* Rows of the previous successful scan of this same source and settings.
+ * A listed image whose listing metadata (inode, size, mtime, ctime) equals a
+ * validated row reuses that row and is not opened. A new or changed image is
+ * validated as usual. A removed image has no listing entry and is dropped.
+ * only, when set, validates just images named <only>.<extension>; any other
+ * new or changed image stays unverified (not checked) until a full scan.
+ * The counters are outputs. Rows are borrowed for the call only. */
+struct bw_catalog_reuse {
+    const struct bw_catalog_item *items;
+    size_t count;
+    const char *share,*only;
+    uint32_t reused,validated,deferred;
+};
+int bw_source_catalog_scan_reusing(struct bw_source *,struct bw_catalog_reuse *,struct bw_source_catalog *);
+/* Index of the validated row with this source, share and image generation,
+ * or count when none. Covers of that row belong to the same generation. */
+size_t bw_source_catalog_reuse_find(const struct bw_catalog_item *,size_t,const struct bw_catalog_item *);
 /* Read only the bounded icon from the exact admitted image generation. No
  * extraction or fabricated folder SMB metadata. The caller owns the result.
  * Positive means absent/over budget; -1 discards partial bytes on any failure. */

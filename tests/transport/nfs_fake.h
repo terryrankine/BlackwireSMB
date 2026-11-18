@@ -12,9 +12,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
-struct nfsfh {int fd;};
+struct nfsfh {int fd,slow;};
 /* Open handles are tracked: libnfs frees them with the context. */
 struct nfs_context {char root[1024];int mounted,version,timeout,retrans,autoreconnect,dircache,readonly,uid,gid;size_t readmax;struct nfsfh *open[32];};
 struct nfsdir {struct nfsdirent *entries,*next;};
@@ -24,6 +25,10 @@ static struct {
     unsigned contexts,destroys,mounts,opens,closes,preads,lstats,opendirs;
     size_t server_readmax;
     struct nfs_context last;
+    /* Runs on every pread: a copy job writing beside the scanned images. */
+    void (*on_pread)(void);
+    /* A file whose name ends with slow_name stalls its first read this long. */
+    char slow_name[64];unsigned slow_ms;
 } nfs_fake;
 
 static void nfs_fake_reset(const char *base){
@@ -82,6 +87,7 @@ int nfs_open(struct nfs_context *n,const char *path,int flags,struct nfsfh **out
     }
     int fd=open(full,O_RDONLY|O_NOFOLLOW);if(fd<0)return -errno;
     struct nfsfh *f=malloc(sizeof *f);if(!f){close(fd);return -ENOMEM;}f->fd=fd;
+    size_t pl=strlen(path),sl=strlen(nfs_fake.slow_name);f->slow=sl&&pl>=sl&&!strcmp(path+pl-sl,nfs_fake.slow_name);
     for(unsigned i=0;i<32;i++)if(!n->open[i]){n->open[i]=f;*out=f;nfs_fake.opens++;return 0;}
     close(fd);free(f);return -EMFILE;
 }
@@ -94,6 +100,8 @@ int nfs_fstat64(struct nfs_context *n,struct nfsfh *f,struct nfs_stat_64 *o){
 }
 int nfs_pread(struct nfs_context *n,struct nfsfh *f,void *buf,size_t count,uint64_t offset){
     nfs_fake.preads++;
+    if(nfs_fake.on_pread)nfs_fake.on_pread();
+    if(f->slow&&nfs_fake.slow_ms){struct timespec wait={nfs_fake.slow_ms/1000,(long)(nfs_fake.slow_ms%1000)*1000000L};nanosleep(&wait,NULL);f->slow=0;}
     if(count>nfs_get_readmax(n))return -EINVAL;
     if(nfs_fake.fail_pread_at&&nfs_fake.preads>=(unsigned)nfs_fake.fail_pread_at)return -EINTR;
     ssize_t got=pread(f->fd,buf,count,(off_t)offset);return got<0?-errno:(int)got;

@@ -12,7 +12,7 @@ def main():
  enums='\n'.join(line for line in source.splitlines() if line.startswith('enum {'))
  header='#include "native_backend.h"\n#include <pthread.h>\n#include <string.h>\n#include <assert.h>\n'+source[start:end]+'\n'+enums+'\n'
  header+='static void *scan(void *p){return p;}\nstatic int worker_start(pthread_t *,void *(*)(void *),void *);\n'
- for name in ['static void settings_adopt(','static void settings_sync(','static int refresh_unlocked(']:header+=function(source,name)+'\n'
+ for name in ['static void settings_adopt(','static void settings_sync(','static int refresh_locked(','static int refresh_unlocked(']:header+=function(source,name)+'\n'
  (out/'settings-startup-under-test.h').write_text(header)
  argv=['clang-18','-std=gnu11','-O1','-g','-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-misleading-indentation','-fsanitize=address,undefined','-fno-sanitize-recover=all',
  '-I'+str(out),'-I'+str(lib),'-I'+str(ROOT/'vendor/libsmb2/include'),str(Path(__file__).with_name('test_settings_startup.c')),str(ROOT/'src/blackwire/streamreader/share_config.c'),'-pthread','-o',str(out/'test')]

@@ -273,6 +273,7 @@ def host_tests(root, out, source, runner):
                         ("settings_storage", "diagnostics/check_settings_storage.py"),
                         ("settings_check_failure", "diagnostics/check_settings_check_failure.py"),
                         ("catalog_image_failure", "diagnostics/check_catalog_image_failure.py"),
+                        ("scriptable_api", "diagnostics/check_scriptable_api.py"),
                         ("registration_wait", "diagnostics/check_registration_wait.py"),
                         ("two_shares", "sources/check_two_shares.py"),
                         ("identity_golden", "sources/check_identity_golden.py"),

@@ -98,9 +98,14 @@ int bw_native_send_request_parse(const void *bytes,size_t size,struct bw_native_
     struct parser p={bytes,size,0};unsigned seen=0;space(&p);if(p.at==size||p.bytes[p.at++]!='{')goto bad;
     for(;;){
         space(&p);char key[32];if(string(&p,key,sizeof key))goto bad;space(&p);if(p.at==size||p.bytes[p.at++]!=':')goto bad;space(&p);unsigned bit=0;
-        if(!strcmp(key,"name"))bit=1;else if(!strcmp(key,"libraryGeneration"))bit=2;else if(!strcmp(key,"settingsRevision"))bit=4;else if(!strcmp(key,"sourceBinding"))bit=8;else goto bad;
+        if(!strcmp(key,"name"))bit=1;else if(!strcmp(key,"libraryGeneration"))bit=2;else if(!strcmp(key,"settingsRevision"))bit=4;else if(!strcmp(key,"sourceBinding"))bit=8;
+        else if(!strcmp(key,"titleId"))bit=16;else goto bad;
         if(seen&bit)goto bad;seen|=bit;
         if(bit==1){if(string(&p,out->source,sizeof out->source))goto bad;}
+        else if(bit==16){
+            if(string(&p,out->title_id,sizeof out->title_id)||strlen(out->title_id)!=9||memcmp(out->title_id,"PPSA",4))goto bad;
+            for(unsigned i=4;i<9;i++)if(out->title_id[i]<'0'||out->title_id[i]>'9')goto bad;
+        }
         else if(bit==8){
             if(string(&p,out->source_binding,sizeof out->source_binding)||strlen(out->source_binding)!=74||memcmp(out->source_binding,"PPSA",4)||out->source_binding[9]!='_')goto bad;
             for(unsigned i=4;i<9;i++)if(out->source_binding[i]<'0'||out->source_binding[i]>'9')goto bad;
@@ -114,7 +119,9 @@ int bw_native_send_request_parse(const void *bytes,size_t size,struct bw_native_
         }
         space(&p);if(p.at==size)goto bad;unsigned c=p.bytes[p.at++];if(c=='}')break;if(c!=',')goto bad;
     }
-    space(&p);if(p.at!=size||(seen&7)!=7||!out->library_generation||!out->settings_revision||bw_manifest_validate_path(out->source,strlen(out->source)))goto bad;
+    space(&p);if(p.at!=size)goto bad;
+    if(seen&16){if(seen!=16)goto bad;return 0;}
+    if((seen&7)!=7||!out->library_generation||!out->settings_revision||bw_manifest_validate_path(out->source,strlen(out->source)))goto bad;
     return 0;
 bad:
     bw_native_sensitive_clear(out,sizeof *out);return -1;

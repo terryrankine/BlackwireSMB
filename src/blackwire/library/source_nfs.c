@@ -93,11 +93,18 @@ static int ns_parents(struct bw_source *p,const char *path,int include_leaf,stru
     }
     return 0;
 }
+/* A directory stays the same object while files beside the one in use come
+ * and go: a copy writing <id>.ffpfsc.partial or a .sha256 moves the folder's
+ * times. Only its identity counts here. Each file is checked on its own, and
+ * a game folder's whole tree is checked by ns_walk_directory. */
+static int ns_same_directory(const struct bw_source_info *a,const struct bw_source_info *b){
+    return a&&b&&a->inode==b->inode&&a->attributes==b->attributes;
+}
 static int ns_parents_same(struct bw_source *p,const char *path,int include_leaf,const struct bw_source_info *before,unsigned count){
     struct bw_source_info after[NS_MAX_DEPTH+1];unsigned now=0;int result=ns_parents(p,path,include_leaf,after,&now);
     if(result)return result;
     if(now!=count)return -ESTALE;
-    for(unsigned i=0;i<count;i++)if(!ns_same(&before[i],&after[i]))return -ESTALE;
+    for(unsigned i=0;i<count;i++)if(!ns_same_directory(&before[i],&after[i]))return -ESTALE;
     return 0;
 }
 

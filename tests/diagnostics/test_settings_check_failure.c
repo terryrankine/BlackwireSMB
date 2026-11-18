@@ -37,6 +37,12 @@ int bw_source_smb_small_file(struct bw_source *s,const char *path,size_t maximum
     (void)s;(void)path;(void)maximum;(void)bytes;(void)size;(void)info;abort();
 }
 void bw_source_catalog_destroy(struct bw_source_catalog *p){free(p->items);memset(p,0,sizeof *p);}
+/* Discovery always passes a reuse record; no earlier library exists here. */
+double bw_catalog_image_stall_seconds=120,bw_catalog_image_limit_seconds=1800,bw_catalog_step_seconds=180;
+int bw_source_catalog_scan_reusing(struct bw_source *s,struct bw_catalog_reuse *reuse,struct bw_source_catalog *out){
+    if(!reuse||reuse->count||reuse->only)abort();return bw_source_catalog_scan(s,out);
+}
+size_t bw_source_catalog_reuse_find(const struct bw_catalog_item *rows,size_t count,const struct bw_catalog_item *item){(void)rows;(void)item;return count;}
 int bw_source_catalog_available(const struct bw_catalog_item *p){return p&&(p->state==BW_CATALOG_FOLDER||p->state==BW_CATALOG_CONTAINER_READY);}
 void bw_source_catalog_image_hash(const struct bw_stat *s,uint8_t hash[32]){(void)s;(void)hash;abort();}
 int bw_source_catalog_binding(struct bw_provider_binding *out,const struct bw_share_config *c,const struct bw_catalog_item *i){(void)out;(void)c;(void)i;abort();}
@@ -98,7 +104,7 @@ static void failed_case(int m,const char *share,const char *stage,const char *me
 }
 int main(void){
 #ifdef BW_SETTINGS_ACTUAL_CATALOG
-    const int modes[]={FILE_DENIED,FILE_NOT_PERMITTED,OPEN_FAILED_UNKNOWN,IMAGE_GENERATION_CHANGED,READ_EOF_CLOSE_DENIED};
+    const int modes[]={FILE_DENIED,FILE_NOT_PERMITTED,OPEN_FAILED_UNKNOWN,READ_EOF_CLOSE_DENIED};
     for(unsigned k=0;k<sizeof modes/sizeof *modes;k++){
         cases++;struct bw_native_backend p;init(&p,modes[k]);struct bw_share_config before=saved_config;scan(&p);
         C(!p.active&&p.phase==BACKEND_FAILED&&p.setup_phase==SETUP_FAILED&&p.setup_error==SETUP_CONNECTION_ERROR&&!saves);
@@ -120,6 +126,13 @@ int main(void){
         }else C(p.check_failure.container_result==BW_CONTAINER_STALE&&strstr(p.check_message,"could not be read consistently"));
         char *j=failure_json(&p);C(strstr(j,"\"sourcePath\":\"Neutral game.ffpfsc\"")&&strstr(j,"\"sourceStage\":\"container_open\"")&&strstr(j,"\"transportResult\":"));puts(j);free(j);done(&p);
     }
+    /* An image that changes while it is checked is marked alone. The check
+     * completes and the rest of the library is usable. */
+    {cases++;struct bw_native_backend p;init(&p,IMAGE_GENERATION_CHANGED);scan(&p);
+     C(!p.active&&p.phase==BACKEND_READY&&p.setup_phase==SETUP_SAVED&&!*p.check_message);
+     const struct bw_catalog_item *row=NULL;
+     for(size_t i=0;i<p.library.catalog.count;i++)if(!strcmp(p.library.catalog.items[i].source,"Neutral game.ffpfsc"))row=p.library.catalog.items+i;
+     C(row&&row->state==BW_CATALOG_CONTAINER&&row->container_error==BW_CONTAINER_STALE&&!*row->title_id);done(&p);}
     cases++;struct bw_native_backend fresh;init(&fresh,FILE_DENIED);memset(&saved_config,0,sizeof saved_config);
     fresh.settings_status=BW_SETUP_MISSING;struct bw_share_config absent=saved_config;scan(&fresh);
     C(!saves&&!memcmp(&saved_config,&absent,sizeof absent)&&fresh.setup_phase==SETUP_FAILED&&!fresh.check_settings_saved);
