@@ -390,6 +390,10 @@ int main(void){
         CHECK(bp_source_read_observed(p,id,0,out,5,&witness)==-EIO&&empty_witness(&witness)&&canceled&&destroys==before+1);
         canceled=changed=0;CHECK(bp_source_read(p,id,0,out,5)==-EIO);CHECK(!bp_source_close(p));
     }
+    /* This build links no NFS table: an NFS handoff is refused at admission,
+     * before any context exists. */
+    fixture();cases++;{static const char nfs[]="transport=nfs\nserver=192.0.2.1\nexport=/volume1/public\npath=emulation/ps5/games/images\nnfs_version=3\nuid=1000\ngid=1000\n";
+        unsigned made=contexts;calls=connects;p=NULL;CHECK(bp_source_admit(&p,map,map_size,selection,selection_size,nfs,sizeof nfs-1,guard,&canceled)<0&&!p);CHECK(contexts==made&&connects==calls);}
     memset(&perf,0xa5,sizeof perf);bp_source_performance(NULL,&perf);struct bp_source_performance empty={0};CHECK(!memcmp(&perf,&empty,sizeof perf));
     CHECK(contexts==destroys);printf("{\"passed\":true,\"cases\":%u,\"checks\":%u,\"transportModelOnly\":true,\"nativeReadProved\":false,\"requestScopedFences\":true,\"coalescingMaximumBytes\":%u,\"scratchSeparateFrom64MiBCache\":true,\"cold1MiB\":{\"namedStats\":2,\"heldStats\":2,\"fullDataCalls\":1},\"cached1MiB\":{\"namedStats\":2,\"heldStats\":2,\"dataCalls\":0},\"partialThreeBlockRead\":{\"namedStats\":2,\"heldStats\":2,\"dataCalls\":17},\"contextsDestroyed\":%u,\"pendingDestinationDrainedBeforeReuse\":%u,\"telemetryClock\":\"modeled monotonic nanoseconds; faults nonauthoritative\"}\n",cases,checks,BP_COALESCE_BYTES,destroys,pending_drained);return 0;
 }
