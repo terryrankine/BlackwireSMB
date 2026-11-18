@@ -16,10 +16,11 @@ static int same(const struct stat *a,const struct stat *b){
         a->st_mtim.tv_sec==b->st_mtim.tv_sec&&a->st_mtim.tv_nsec==b->st_mtim.tv_nsec&&a->st_ctim.tv_sec==b->st_ctim.tv_sec&&a->st_ctim.tv_nsec==b->st_ctim.tv_nsec;
 }
 int bw_native_setup_config_valid(const struct bw_share_config *p){
-    if(!p)return 0;const char *values[]={p->server,p->share,p->user,p->password,p->share2};const size_t limits[]={sizeof p->server,sizeof p->share,sizeof p->user,sizeof p->password,sizeof p->share2};
-    for(unsigned i=0;i<5;i++){size_t n=strnlen(values[i],limits[i]);if(n==limits[i]||!bw_json_utf8(values[i]))return 0;
+    if(!p)return 0;const char *values[]={p->server,p->share,p->user,p->password,p->share2,p->nfs_export,p->nfs_path,p->nfs_path2};
+    const size_t limits[]={sizeof p->server,sizeof p->share,sizeof p->user,sizeof p->password,sizeof p->share2,sizeof p->nfs_export,sizeof p->nfs_path,sizeof p->nfs_path2};
+    for(unsigned i=0;i<8;i++){size_t n=strnlen(values[i],limits[i]);if(n==limits[i]||!bw_json_utf8(values[i]))return 0;
         for(size_t j=0;j<n;j++)if((unsigned char)values[i][j]<32||values[i][j]==127)return 0;}
-    struct bw_share_config selected={0};int valid=!bw_share_select(&selected,p,NULL);bw_share_clear(&selected);return valid;
+    struct bw_share_config selected={0};int valid=!bw_share_select_source(&selected,p,NULL);bw_share_clear(&selected);return valid;
 }
 static int root_open(const char *base,struct prepare_v2 *anchor){
     memset(anchor,0,sizeof *anchor);if(!base||v2_copy(anchor->root,sizeof anchor->root,base))return -1;
@@ -101,8 +102,8 @@ int bw_native_setup_store(const char *base,const struct bw_share_config *next,co
     for(unsigned i=0;i<32;i++)if(!((nonce[i]>='0'&&nonce[i]<='9')||(nonce[i]>='a'&&nonce[i]<='f')))return BW_SETUP_SAVE_UNSAFE;
     char encoded[1024],before[4096]={0},checked[4096]={0},temp[96];struct bw_share_config prior={0},after={0};struct bw_setup_generation current={0},again={0};struct prepare_v2 anchor;
     int root=-1,lock=-1,backup=-1,fd=-1,final=-1,result=BW_SETUP_SAVE_IO;
-    int n=snprintf(encoded,sizeof encoded,"server=%s\nshare=%s\nuser=%s\npassword=%s\npath=\n%s%s%s",next->server,next->share,next->user,next->password,*next->share2?"share2=":"",next->share2,*next->share2?"\n":"");
-    if(n<0||(size_t)n>=sizeof encoded)goto done;root=root_open(base,&anchor);if(root<0){result=BW_SETUP_SAVE_UNSAFE;goto done;}
+    size_t n=0;
+    if(bw_share_encode(next,encoded,sizeof encoded,&n))goto done;root=root_open(base,&anchor);if(root<0){result=BW_SETUP_SAVE_UNSAFE;goto done;}
     int status=read_at(root,&anchor,&prior,&current,before);
     if(status<0){result=BW_SETUP_SAVE_UNSAFE;goto done;}if(!bw_native_setup_generation_equal(expected,&current)){result=BW_SETUP_SAVE_STALE;goto done;}
     if(idle(opaque)){result=BW_SETUP_SAVE_BUSY;goto done;}
@@ -115,7 +116,7 @@ int bw_native_setup_store(const char *base,const struct bw_share_config *next,co
         if(backup<0||fchmod(backup,0600)||write_all(backup,before,(size_t)current.file.st_size)||fsync(backup)||verify(root,saved->backup,backup,before,(size_t)current.file.st_size))goto done;
     }
     fd=v2_openat(root,temp,O_CREAT|O_EXCL|O_NOFOLLOW|O_RDWR,0600);
-    if(fd<0||fchmod(fd,0600)||write_all(fd,encoded,(size_t)n)||fsync(fd)||verify(root,temp,fd,encoded,(size_t)n)||fsync(root))goto done;
+    if(fd<0||fchmod(fd,0600)||write_all(fd,encoded,n)||fsync(fd)||verify(root,temp,fd,encoded,n)||fsync(root))goto done;
     if(idle(opaque)){result=BW_SETUP_SAVE_BUSY;goto done;}
     status=read_at(root,&anchor,&after,&again,checked);if(status<0){result=BW_SETUP_SAVE_UNSAFE;goto done;}
     if(!bw_native_setup_generation_equal(expected,&again)){result=BW_SETUP_SAVE_STALE;goto done;}
@@ -128,13 +129,13 @@ int bw_native_setup_store(const char *base,const struct bw_share_config *next,co
         final=v2_openat(root,"share.conf",O_CREAT|O_EXCL|O_NOFOLLOW|O_RDWR,0600);
         if(final<0){result=errno==EEXIST?BW_SETUP_SAVE_STALE:BW_SETUP_SAVE_IO;goto done;}
         saved->published=1;result=BW_SETUP_SAVE_UNCONFIRMED;
-        if(fchmod(final,0600)||idle(opaque)||!v2_root_current(&anchor,root)||verify(root,"share.conf",final,"",0)||write_all(final,encoded,(size_t)n)||fsync(final)||
-            verify(root,"share.conf",final,encoded,(size_t)n)||verify(root,temp,fd,encoded,(size_t)n)||cp_unlinkat(root,temp))goto done;
+        if(fchmod(final,0600)||idle(opaque)||!v2_root_current(&anchor,root)||verify(root,"share.conf",final,"",0)||write_all(final,encoded,n)||fsync(final)||
+            verify(root,"share.conf",final,encoded,n)||verify(root,temp,fd,encoded,n)||cp_unlinkat(root,temp))goto done;
         int old=fd;fd=final;final=-1;if(close(old))goto done;
     }else{
         if(cp_renameat(root,temp,root,"share.conf"))goto done;saved->published=1;
     }
-    if(!v2_root_current(&anchor,root)||verify(root,"share.conf",fd,encoded,(size_t)n)||fsync(root)){result=BW_SETUP_SAVE_UNCONFIRMED;goto done;}
+    if(!v2_root_current(&anchor,root)||verify(root,"share.conf",fd,encoded,n)||fsync(root)){result=BW_SETUP_SAVE_UNCONFIRMED;goto done;}
     saved->verified=1;result=BW_SETUP_SAVE_OK;
 done:
     bw_share_clear(&prior);bw_share_clear(&after);bw_native_sensitive_clear(encoded,sizeof encoded);bw_native_sensitive_clear(before,sizeof before);bw_native_sensitive_clear(checked,sizeof checked);
