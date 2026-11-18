@@ -23,7 +23,7 @@ PROJECTION_CFILES = ["library/source_companions.c", "library/reader_projection.c
 CFILES += PROJECTION_CFILES
 # Linked only into the module. Host suites that compile CFILES with SMB fakes
 # stay free of libnfs.
-NFS_CFILES = ["reader/preload/private_nfs.c"]
+NFS_CFILES = ["reader/preload/nfs_ops.c", "reader/preload/private_nfs.c"]
 FLAGS = ["AMPR_PACK_ENABLE=1", "AMPR_DIRECTORY_OVERLAY=1", "AMPR_PROCESS_READ_INTERCEPT=1",
          "AMPR_PROCESS_OPEN_INTERCEPT=1", "AMPR_PROCESS_AIO_INTERCEPT=1",
          "AMPR_PROCESS_SYNC_READ_INTERCEPT=1", "AMPR_DEBUG_LOG=0", "AMPR_COMMAND_LOG=0", "BP_METADATA_PROFILE=0",
@@ -36,10 +36,10 @@ RENAMES = {"getaddrinfo": "bp_smb_getaddrinfo", "freeaddrinfo": "bp_smb_freeaddr
            "srandom": "bp_smb_srandom", "getenv": "bp_smb_getenv", "__isthreaded": "bp_smb_isthreaded"}
 # libnfs gets its own adapters: it resolves with a NULL service, asks the
 # services database while it picks a reserved source port, and would set the
-# game's SIGPIPE disposition.
+# game's SIGPIPE disposition. The SDK libc has no __assert or getnameinfo.
 NFS_RENAMES = {"getaddrinfo": "bp_nfs_getaddrinfo", "freeaddrinfo": "bp_nfs_freeaddrinfo",
                "getprotobyname": "bp_nfs_getprotobyname", "getservbyport": "bp_nfs_getservbyport",
-               "signal": "bp_nfs_signal"}
+               "signal": "bp_nfs_signal", "__assert": "bp_nfs_assert", "getnameinfo": "bp_nfs_getnameinfo"}
 # Each private archive is renamed on its own copy. Its symbols stay inside the
 # combined object: the version script exports AMPR NIDs only.
 PRIVATE_ARCHIVES = (("smb", "libsmb2-private.a", RENAMES), ("nfs", "libnfs-private.a", NFS_RENAMES))
@@ -142,6 +142,13 @@ def host_tests(root, out, source, runner):
                 *[source / "bw" / name for name in CFILES if not name.endswith("private_smb.c") and name not in HOME_CFILES],
                 tests / "source_test.c", "-Wl,--wrap=clock_gettime", "-o", exe], "host-source-compile")
     results["source"] = json.loads(runner.run([exe], "host-source-test"))
+    # Same DATA/cache/source code over the real NFS table and a modeled libnfs.
+    exe = out / "test-nfs-source"
+    runner.run([*cc, "-DBW_GTA_AUDIO_BOOTSTRAP=1", "-Wno-misleading-indentation", "-Wno-unused-function",
+                "-I" + str(root / "vendor/libsmb2/include"), "-I" + str(root / "vendor/libnfs/include"), "-I" + str(root / "src/blackwire"),
+                *[source / "bw" / name for name in CFILES if not name.endswith("private_smb.c") and name not in HOME_CFILES],
+                source / "bw/reader/preload/nfs_ops.c", tests / "nfs_source_test.c", "-Wl,--wrap=clock_gettime", "-o", exe], "host-nfs-source-compile")
+    results["nfs_source"] = json.loads(runner.run([exe], "host-nfs-source-test"))
     exe = out / "test-adapter"
     runner.run([*cc, root / "src/blackwire/reader/preload/private_smb.c", root / "src/blackwire/reader/preload/private_nfs.c",
                 tests / "adapter_test.c", "-o", exe], "host-adapter-compile")
@@ -169,7 +176,7 @@ def host_tests(root, out, source, runner):
     home_out = out / "home-startup-host"
     runner.run(["python3", tests / "check_home.py", "--root", root, "--out", home_out], "host-home-startup")
     results["home_startup"] = json.loads((home_out / "proof.json").read_text())
-    for key, script in (("exfat_metadata", "check_exfat.py"), ("compressed_stream", "check_synthetic.py"),
+    for key, script in (("exfat_metadata", "check_exfat.py"), ("compressed_stream", "check_synthetic.py"), ("nfs_compressed_stream", "check_nfs_images.py"),
                         ("pfsc_batching", "check_pfsc_batching.py"), ("preparation_batching", "check_prepare_batching.py"),
                         ("folder_preparation_batching", "check_source_smb_batching.py"),
                         ("metadata_read_window", "check_metadata_read_window.py"),

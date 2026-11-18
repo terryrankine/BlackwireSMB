@@ -58,3 +58,13 @@ struct servent *bp_nfs_getservbyport(int port,const char *proto){(void)port;(voi
  * libnfs then has the same SIGPIPE exposure as libsmb2 in this process. */
 typedef void (*bp_nfs_handler)(int);
 bp_nfs_handler bp_nfs_signal(int sig,bp_nfs_handler handler){(void)sig;(void)handler;return SIG_DFL;}
+/* The SDK libc exports neither. libnfs keeps its internal asserts, so a
+ * broken invariant still stops as upstream intends. getnameinfo is reached
+ * only by server discovery and broadcast code the reader never calls. */
+void bp_nfs_assert(const char *function,const char *file,int line,const char *expression){
+    (void)function;(void)file;(void)line;(void)expression;abort();
+}
+int bp_nfs_getnameinfo(const struct sockaddr *address,socklen_t size,char *host,socklen_t host_size,
+    char *service,socklen_t service_size,int flags){
+    (void)address;(void)size;(void)host;(void)host_size;(void)service;(void)service_size;(void)flags;return EAI_FAIL;
+}

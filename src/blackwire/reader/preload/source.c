@@ -2,6 +2,7 @@
  * Reuses Blackwire's canonical parsers/binding/cache and libsmb2 read APIs.
  * No source mutation, container fallback or game/process control. */
 #include "source.h"
+#include "transport.h"
 #include "../../library/reader_selection.h"
 #include "../../library/reader_projection.h"
 #include "../../library/source_binding.h"
@@ -9,8 +10,6 @@
 #include "../../streamreader/cache.h"
 #include "../../streamreader/copy_sha256.h"
 #include <time.h>
-#include <smb2/smb2.h>
-#include <smb2/libsmb2.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdlib.h>
@@ -32,30 +31,11 @@
 #define BP_MAP_LIMIT (40u*1024u*1024u)
 #define BP_HANDLES 16u
 #define BP_READ_LIMIT (64u*1024u*1024u)
-/* Transport seam: one SMB table today, so a second transport changes no
- * caller. Opaque tags keep call sites typed without spreading libsmb2 types.
- * Metadata stays smb2_stat_64 until the reader adopts bw_stat. Async
- * completions always land in metadata_done: no callback storage is added. */
-struct bp_transport;struct bp_file;
-struct bp_transport_ops {
-    struct bp_transport *(*init)(void);
-    void (*configure)(struct bp_transport *,const struct bw_share_config *,unsigned *returned);
-    int (*connect)(struct bp_transport *,const struct bw_share_config *);
-    uint32_t (*status)(struct bp_transport *);
-    void (*destroy)(struct bp_transport *);
-    int (*stat)(struct bp_transport *,const char *,struct smb2_stat_64 *);
-    int (*fstat)(struct bp_transport *,struct bp_file *,struct smb2_stat_64 *);
-    struct bp_file *(*open)(struct bp_transport *,const char *);
-    int (*close)(struct bp_transport *,struct bp_file *);
-    int (*stat_async)(struct bp_transport *,const char *,struct smb2_stat_64 *,void *);
-    int (*fstat_async)(struct bp_transport *,struct bp_file *,struct smb2_stat_64 *,void *);
-    int (*fd)(struct bp_transport *);
-    int (*events)(struct bp_transport *);
-    int (*service)(struct bp_transport *,int);
-    int (*pread)(struct bp_transport *,struct bp_file *,uint8_t *,uint32_t,uint64_t);
-    uint32_t (*max_read)(struct bp_transport *);
-};
-static void metadata_done(void *,int);
+/* Transport seam (transport.h). The SMB table lives here. The NFS table is
+ * its own object (nfs_ops.c) and is referenced weakly: a host build that
+ * links source.c without it has no NFS table and refuses every NFS handoff
+ * at admission, before any connection. The reader build links both. */
+extern const struct bp_transport_ops bp_nfs_ops __attribute__((weak));
 #define SMB(t) ((struct smb2_context *)(t))
 #define SMBFH(f) ((struct smb2fh *)(f))
 static struct bp_transport *smb_init(void){return (struct bp_transport *)smb2_init_context();}
@@ -74,7 +54,7 @@ static int smb_stat(struct bp_transport *t,const char *path,struct smb2_stat_64 
 static int smb_fstat(struct bp_transport *t,struct bp_file *f,struct smb2_stat_64 *st){return smb2_fstat(SMB(t),SMBFH(f),st);}
 static struct bp_file *smb_open(struct bp_transport *t,const char *path){return (struct bp_file *)smb2_open(SMB(t),path,O_RDONLY);}
 static int smb_close(struct bp_transport *t,struct bp_file *f){return smb2_close(SMB(t),SMBFH(f));}
-static void smb_metadata_done(struct smb2_context *smb,int status,void *data,void *opaque){(void)smb;(void)data;metadata_done(opaque,status);}
+static void smb_metadata_done(struct smb2_context *smb,int status,void *data,void *opaque){(void)smb;(void)data;bp_transport_metadata_done(opaque,status);}
 static int smb_stat_async(struct bp_transport *t,const char *path,struct smb2_stat_64 *st,void *opaque){return smb2_stat_async(SMB(t),path,st,smb_metadata_done,opaque);}
 static int smb_fstat_async(struct bp_transport *t,struct bp_file *f,struct smb2_stat_64 *st,void *opaque){return smb2_fstat_async(SMB(t),SMBFH(f),st,smb_metadata_done,opaque);}
 static int smb_fd(struct bp_transport *t){return smb2_get_fd(SMB(t));}
@@ -184,7 +164,7 @@ struct bp_metadata_op {
     struct bp_source *source;struct bp_io_performance *performance;
     struct bp_stamp stamp;int done,raw,error;unsigned stage;
 };
-static void metadata_done(void *opaque,int status){
+void bp_transport_metadata_done(void *opaque,int status){
     struct bp_metadata_op *op=opaque;int error=errno;
     if(op->done)return;
     op->raw=status;op->error=error;op->done=1;
@@ -426,12 +406,14 @@ static int source_admit(struct bp_source **out,const void *map,size_t map_size,
     if(!map||!map_size||map_size>BP_MAP_LIMIT||!guard||guard(opaque))return -1;
     struct bp_source *p=calloc(1,sizeof *p);struct bw_share_config config={0};
     if(!p)return -1;
-    p->current=guard;p->opaque=opaque;p->tp=&bp_smb_ops;
+    p->current=guard;p->opaque=opaque;
     struct bw_provider_binding identity;
     if(bw_reader_selection_parse(&p->selected,selection,selection_size)||
        (bw_reader_selection_is_projection(&p->selected)?(!envelope||!envelope_size):(envelope||envelope_size))||
        (p->selected.source_kind!=BW_PROVIDER_FOLDER&&p->selected.source_kind!=BW_PROVIDER_CONTAINER)||p->selected.source_policy!=BW_PROVIDER_POLICY_V1||
        bw_share_parse(&config,share,share_size)||!numeric_ipv4(config.server)||
+       !(p->tp=config.transport==BW_SHARE_SMB?&bp_smb_ops:config.transport==BW_SHARE_NFS?&bp_nfs_ops:NULL)||
+       (config.transport==BW_SHARE_NFS&&(config.nfs_has_path2||*config.nfs_path2||*config.share||*config.user||*config.password))||
        bw_provider_binding_init(&identity,&config,p->selected.source,p->selected.title,(enum bw_provider_kind)p->selected.source_kind)||
        strcmp(identity.binding.game,p->selected.game)||strcmp(identity.binding.game+10,p->selected.binding_hex))goto fail;
     p->binding=identity.binding;

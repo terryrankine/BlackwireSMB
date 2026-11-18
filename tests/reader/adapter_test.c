@@ -15,6 +15,7 @@ void bp_nfs_freeaddrinfo(struct addrinfo*);
 struct protoent *bp_nfs_getprotobyname(const char*);
 struct servent *bp_nfs_getservbyport(int,const char*);
 void (*bp_nfs_signal(int,void (*)(int)))(int);
+int bp_nfs_getnameinfo(const struct sockaddr*,socklen_t,char*,socklen_t,char*,socklen_t,int);
 static unsigned checks;
 #define CHECK(x) do{checks++;if(!(x)){fprintf(stderr,"adapter failed line%d\n",__LINE__);return 1;}}while(0)
 int main(void){
@@ -37,6 +38,7 @@ int main(void){
     CHECK(bp_nfs_getaddrinfo("192.0.2.7","65536",NULL,&a)!=0);CHECK(bp_nfs_getaddrinfo("192.0.2.7",NULL,&hints,&a)!=0);
     struct protoent *tcp=bp_nfs_getprotobyname("tcp");CHECK(tcp&&tcp->p_proto==IPPROTO_TCP);CHECK(bp_nfs_getprotobyname("udp")==NULL);
     CHECK(bp_nfs_getservbyport(111,"tcp")==NULL&&bp_nfs_getservbyport(0x0100,"tcp")==NULL);
+    {char host[64]="unchanged";struct sockaddr_in any={0};CHECK(bp_nfs_getnameinfo((struct sockaddr*)&any,sizeof any,host,sizeof host,NULL,0,NI_NUMERICHOST)==EAI_FAIL&&!strcmp(host,"unchanged"));}
     /* The game's SIGPIPE disposition survives libnfs context creation. */
     CHECK(signal(SIGPIPE,SIG_DFL)!=SIG_ERR);CHECK(bp_nfs_signal(SIGPIPE,SIG_IGN)!=SIG_ERR);CHECK(signal(SIGPIPE,SIG_DFL)==SIG_DFL);
     printf("{\"passed\":true,\"checks\":%u,\"networkCalls\":0,\"privateAdapterOnly\":true,\"gameRngNotReseeded\":true,\"nfsResolverNumericOnly\":true,\"gameSignalsUnchanged\":true}\n",checks);return 0;
