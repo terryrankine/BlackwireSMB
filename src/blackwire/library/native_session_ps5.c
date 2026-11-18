@@ -19,7 +19,7 @@ static int title(void *opaque,uint32_t app,char out[16]){
     if(n!=9)return -1;for(unsigned i=0;i<=n;i++)out[i]=bytes[i];return 0;
 }
 static int process(void *opaque,int32_t pid,struct bw_stop_identity *out){
-    (void)opaque;if(pid<=1||pid==getpid()||kernel_get_fw_version()!=BW_STOP_PROFILE_FW)return -1;
+    (void)opaque;if(pid<=1||pid==getpid()||!bw_stop_profile_lookup(kernel_get_fw_version(),BW_STOP_PROFILE_RECORD))return -1;
     unsigned char bytes[16384];size_t size=sizeof bytes;int mib[4]={CTL_KERN,KERN_PROC,KERN_PROC_PID,pid};
     _Static_assert(SYS___sysctl==202,"Native read-only sysctl ABI");
     register uint64_t r10 __asm__("r10")=(uintptr_t)&size,r8 __asm__("r8")=0,r9 __asm__("r9")=0;

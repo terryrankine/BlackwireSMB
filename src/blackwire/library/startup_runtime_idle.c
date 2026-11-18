@@ -27,12 +27,12 @@ static uint32_t u32(const unsigned char *p){return (uint32_t)p[0]|((uint32_t)p[1
 static uint64_t u64(const unsigned char *p){return (uint64_t)u32(p)|((uint64_t)u32(p+4)<<32);}
 static int compare(const void *a,const void *b){const struct identity *x=a,*y=b;return x->pid<y->pid?-1:x->pid!=y->pid;}
 static int snapshot(const struct bw_startup_idle_request *r,const struct bw_src_idle_ops *ops,struct identity **out,size_t *count,const struct bw_stop_identity *allowed){
-    *out=NULL;*count=0;if(current(r)||ops->firmware(ops->opaque)!=BW_STOP_PROFILE_FW)return -1;
+    *out=NULL;*count=0;if(current(r)||!bw_stop_profile_lookup(ops->firmware(ops->opaque),BW_STOP_PROFILE_RECORD))return -1;
     struct bw_src_process_result capacity=ops->query(ops->opaque,NULL,0);
     if(current(r)||capacity.carry||capacity.value||!capacity.used||capacity.used>SNAPSHOT_LIMIT)return -1;
     unsigned char *data=malloc(capacity.used);if(!data)return -1;
     struct bw_src_process_result got=ops->query(ops->opaque,data,capacity.used);int result=-1;struct identity *rows=NULL;
-    if(current(r)||ops->firmware(ops->opaque)!=BW_STOP_PROFILE_FW||got.carry||got.value||!got.used||got.used>capacity.used||got.used%BW_STOP_PROFILE_RECORD||got.used/BW_STOP_PROFILE_RECORD>PROCESS_LIMIT)goto done;
+    if(current(r)||!bw_stop_profile_lookup(ops->firmware(ops->opaque),BW_STOP_PROFILE_RECORD)||got.carry||got.value||!got.used||got.used>capacity.used||got.used%BW_STOP_PROFILE_RECORD||got.used/BW_STOP_PROFILE_RECORD>PROCESS_LIMIT)goto done;
     size_t n=got.used/BW_STOP_PROFILE_RECORD;rows=calloc(n,sizeof *rows);if(!rows)goto done;unsigned busy=0,allowed_seen=0;
     for(size_t i=0;i<n;i++){
         if(current(r))goto done;const unsigned char *p=data+i*BW_STOP_PROFILE_RECORD;uint32_t pid=u32(p+72);

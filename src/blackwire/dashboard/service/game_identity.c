@@ -67,7 +67,7 @@ static int capture(const struct rc_game_identity_ops *ops,
     if (!ops_valid(ops, initial)) return RC_GAME_UNKNOWN;
     uint32_t firmware = ops->firmware(ops->opaque);
     int32_t self = ops->self_pid(ops->opaque);
-    if (firmware != BW_STOP_PROFILE_FW || !selection_valid(selection, self)) return RC_GAME_UNKNOWN;
+    if (!bw_stop_profile_lookup(firmware, BW_STOP_PROFILE_RECORD) || !selection_valid(selection, self)) return RC_GAME_UNKNOWN;
     struct bw_stop_identity first, last;
     int first_result = process_capture(ops, selection->pid, 0xa5, &first);
     if (first_result == RC_GAME_UNKNOWN) return RC_GAME_UNKNOWN;
@@ -125,7 +125,7 @@ int rc_game_identity_current_with_ops(const struct rc_game_identity_ops *ops,
     if (expected) prior = *expected;
     if (ops) held = *ops;
     memset(out, 0, sizeof *out);
-    if (!expected || !ops || prior.firmware != BW_STOP_PROFILE_FW ||
+    if (!expected || !ops || !bw_stop_profile_lookup(prior.firmware, BW_STOP_PROFILE_RECORD) ||
         bw_stop_identity_admit(&prior.process, prior.admitted_wall_us)) return RC_GAME_UNKNOWN;
     struct rc_game_selection selected = {prior.process.pid, prior.app_id, {0}};
     memcpy(selected.title, prior.title, sizeof selected.title);

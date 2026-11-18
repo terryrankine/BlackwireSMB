@@ -244,7 +244,7 @@ static int owner_valid(const struct bd_frontend_owner *owner) {
     return strcmp(owner->source,owner->registered)!=0;
 }
 static int identity_get(const struct bd_frontend_owner *owner,struct bd_frontend_identity *out) {
-    if (!owner_valid(owner)||owner->admitted!=1||owner->original.firmware!=BW_STOP_PROFILE_FW||
+    if (!owner_valid(owner)||owner->admitted!=1||!bw_stop_profile_lookup(owner->original.firmware,BW_STOP_PROFILE_RECORD)||
         bw_stop_identity_admit(&owner->original.process,owner->original.admitted_wall_us)||
         memcmp(owner->original.title,BD_FRONTEND_TITLE,sizeof owner->original.title)) return -1;
     struct bd_frontend_identity expected={0};
