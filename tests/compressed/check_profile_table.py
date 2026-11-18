@@ -8,17 +8,21 @@ def main():
     parser.add_argument('--cc',default='clang-18')
     a=parser.parse_args()
     root=Path(__file__).resolve().parents[2];src=root/'src/blackwire';out=a.output.resolve();out.mkdir(parents=True,exist_ok=False)
-    diagnostics=src/'streamreader/diagnostics'
-    inputs=[diagnostics/'game_stop_identity.c',diagnostics/'game_stop_identity.h',
+    diagnostics=src/'streamreader/diagnostics';lib=src/'library';service=src/'dashboard/service'
+    # frontend_identity.c is included by the test, not compiled on its own.
+    linked=[diagnostics/'game_stop_identity.c',lib/'startup_runtime_idle.c',service/'game_identity.c']
+    inputs=[*linked,diagnostics/'game_stop_identity.h',lib/'startup_runtime_idle.h',service/'game_identity.h',
+            service/'frontend_identity.c',service/'frontend_identity.h',
             root/'tests/compressed/profile_table_test.c',Path(__file__)]
     def pin(p):
         b=p.read_bytes();return {'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()}
     before={str(p.relative_to(root)):pin(p) for p in inputs}
     san=['-fsanitize=address,undefined','-fno-sanitize-recover=all','-fno-omit-frame-pointer'] if 'clang' in a.cc else []
-    command=[a.cc,'-D_DEFAULT_SOURCE','-std=c11','-O1','-g','-Wall','-Wextra','-Werror',
-             '-I'+str(diagnostics),*san,
-             str(root/'tests/compressed/profile_table_test.c'),str(diagnostics/'game_stop_identity.c'),
-             '-o',str(out/'profile_table')]
+    command=[a.cc,'-D_DEFAULT_SOURCE','-std=gnu11','-O1','-g','-Wall','-Wextra','-Werror','-Wno-unused-function',
+             '-DRC_GAME_IDENTITY_HOST_TEST=1','-DBD_FRONTEND_IDENTITY_HOST_TEST=1',
+             *['-I'+str(d) for d in (diagnostics,src/'streamreader',lib,service,root/'vendor/libsmb2/include')],*san,
+             str(root/'tests/compressed/profile_table_test.c'),*map(str,linked),
+             '-ffunction-sections','-fdata-sections','-Wl,--gc-sections','-pthread','-o',str(out/'profile_table')]
     commands=[]
     def run(label,argv):
         env={**os.environ,'ASAN_OPTIONS':'halt_on_error=1:detect_leaks=1','UBSAN_OPTIONS':'halt_on_error=1'}
