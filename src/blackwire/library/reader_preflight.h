@@ -4,6 +4,7 @@
 #include "reader_selection.h"
 #include "reader_source.h"
 #include "../tools/compressed_stream_candidate/compressed_stream.h"
+#include "../streamreader/bw_stat.h"
 struct bw_native_launch_admission;
 
 /* Zero initialize; destroy before reuse. No provider/parser/grant transfers.

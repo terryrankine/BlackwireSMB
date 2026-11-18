@@ -3,6 +3,7 @@
 #include "source_smb.h"
 #include "source_identity.h"
 #include "../streamreader/container_smb.h"
+#include "../streamreader/bw_stat.h"
 #define BW_CATALOG_MAX_ITEMS 4096u
 #define BW_CATALOG_MAX_COLLECTIONS 512u
 #define BW_CATALOG_MAX_DEPTH 3u
