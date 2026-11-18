@@ -56,17 +56,38 @@ int bw_native_setup_request_parse(const void *bytes,size_t size,struct bw_native
         else if(!strcmp(key,"share2")){bit=64;target=out->values.share2;capacity=sizeof out->values.share2;out->share2_present=1;}
         else if(!strcmp(key,"smbUser")){bit=4;target=out->values.user;capacity=sizeof out->values.user;}
         else if(!strcmp(key,"smbPassword")){bit=8;target=out->values.password;capacity=sizeof out->values.password;}
-        else if(!strcmp(key,"revision"))bit=16;else if(!strcmp(key,"keepCredentials"))bit=32;else goto bad;
+        else if(!strcmp(key,"revision"))bit=16;else if(!strcmp(key,"keepCredentials"))bit=32;
+        else if(!strcmp(key,"transport"))bit=128;
+        else if(!strcmp(key,"nfsExport")){bit=256;target=out->values.nfs_export;capacity=sizeof out->values.nfs_export;}
+        else if(!strcmp(key,"nfsPath")){bit=512;target=out->values.nfs_path;capacity=sizeof out->values.nfs_path;}
+        else if(!strcmp(key,"nfsPath2")){bit=1024;target=out->values.nfs_path2;capacity=sizeof out->values.nfs_path2;out->values.nfs_has_path2=1;}
+        else if(!strcmp(key,"nfsVersion"))bit=2048;else if(!strcmp(key,"nfsUid"))bit=4096;else if(!strcmp(key,"nfsGid"))bit=8192;
+        else goto bad;
         if(seen&bit)goto bad;seen|=bit;
         if(target){if(string(&p,target,capacity))goto bad;}
         else if(bit==16){if(number(&p,&out->revision))goto bad;}
+        else if(bit==2048){if(number(&p,&out->values.nfs_version))goto bad;}
+        else if(bit==4096){if(number(&p,&out->values.nfs_uid))goto bad;}
+        else if(bit==8192){if(number(&p,&out->values.nfs_gid))goto bad;}
+        else if(bit==128){
+            char transport[8];if(string(&p,transport,sizeof transport))goto bad;
+            if(!strcmp(transport,"nfs"))out->values.transport=BW_SHARE_NFS;else if(strcmp(transport,"smb"))goto bad;
+        }
         else if(p.size-p.at>=4&&!memcmp(p.bytes+p.at,"true",4)){out->keep_credentials=1;p.at+=4;}
         else if(p.size-p.at>=5&&!memcmp(p.bytes+p.at,"false",5)){out->keep_credentials=0;p.at+=5;}
         else goto bad;
         space(&p);if(p.at==size)goto bad;unsigned c=p.bytes[p.at++];if(c=='}')break;if(c!=',')goto bad;space(&p);
     }
     space(&p);
-    if(p.at!=size||(seen&51)!=51||!out->revision||!*out->values.server||!*out->values.share||strpbrk(out->values.server,"/\\")||strpbrk(out->values.share,"/\\:")||strpbrk(out->values.share2,"/\\:")||
+    if(p.at!=size)goto bad;
+    if(out->values.transport==BW_SHARE_NFS){
+        /* NFS has no share or sign-in. Full path and ID rules run in
+         * bw_native_setup_config_valid before anything is saved. */
+        if((seen&(1|16|256|2048|4096|8192))!=(1|16|256|2048|4096|8192)||(seen&(2|4|8|64))||out->keep_credentials||
+           !out->revision||!*out->values.server||strpbrk(out->values.server,"/\\"))goto bad;
+        return 0;
+    }
+    if((seen&(256|512|1024|2048|4096|8192))||(seen&51)!=51||!out->revision||!*out->values.server||!*out->values.share||strpbrk(out->values.server,"/\\")||strpbrk(out->values.share,"/\\:")||strpbrk(out->values.share2,"/\\:")||
         (out->keep_credentials?(seen&12)!=0:(seen&12)!=12))goto bad;
     return 0;
 bad:

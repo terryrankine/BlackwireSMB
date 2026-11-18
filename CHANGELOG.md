@@ -9,6 +9,8 @@ Changes are grouped by published preview. A build pass, initial menu and control
 - Give each request read one 5-second total budget, on top of the existing per-call socket timeouts. A slowly dripping client can no longer hold the single-threaded listener. A native resident response write stops after 5 seconds without progress, so a slow link still receives a large cover. A failed or stalled response write is logged.
 - Send `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'` and `Referrer-Policy: no-referrer` with every response the native resident builds. No script policy is set, because the page uses inline script and style.
 - Require the resident action token on `POST /api/refresh`, as the other actions already do. The page already sends it.
+- Accept NFS connection settings in `share.conf`: `transport=nfs`, `server`, `export`, `path`, optional `path2`, `nfs_version`, `uid` and `gid`. A file without `transport` is SMB and is written back byte for byte. NFS files have no `share` or `user` line, so older payloads refuse them. The NFS transport itself is not in this build yet, so an NFS connection check fails and nothing is saved.
+- Add an SMB or NFS switch to Settings. NFS hides the Windows username and password and shows `server:/export`. `POST /api/setup` takes `transport`, `nfsExport`, `nfsPath`, `nfsPath2`, `nfsVersion`, `nfsUid` and `nfsGid` behind the same token, Host and Origin checks. `GET /api/state` reports them under `settings`.
 
 ## v0.3.0-beta.3 — automatic Media setup and preparation repairs
 

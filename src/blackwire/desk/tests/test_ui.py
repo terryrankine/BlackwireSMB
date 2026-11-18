@@ -440,6 +440,37 @@ assert.throws(()=>ui.setupBody(s,{...fields,share2:'compressedgames'}),/two diff
 assert(!Object.hasOwn(ui.setupBody(s,{server:'pc',share:'CompressedGames',user:'project-fixture',keep:true}),'share2'));
 ''')
 
+    def test_nfs_setup_body_has_no_sign_in_and_validates_paths_and_ids(self):
+        self.behavior('''
+const s={backend:'native',setup:{editable:true,hasSavedCredentials:true,revision:3},settings:{server:'pc',share:'Games',user:'project-fixture'}};
+const fields={transport:'nfs',server:' 192.168.11.186 ',nfsExport:'/volume1/public',nfsPath:'emulation/ps5/games/folders',nfsPath2:'emulation/ps5/games/images',nfsVersion:'4',nfsUid:'1000',nfsGid:'1000',share:'Games',user:'x',password:'y',keep:true};
+const body=ui.setupBody(s,fields);
+assert.strictEqual(JSON.stringify(body),JSON.stringify({transport:'nfs',server:'192.168.11.186',nfsExport:'/volume1/public',nfsPath:'emulation/ps5/games/folders',nfsVersion:4,nfsUid:1000,nfsGid:1000,revision:3,nfsPath2:'emulation/ps5/games/images'}));
+assert(!Object.hasOwn(ui.setupBody(s,{...fields,nfsPath2:''}),'nfsPath2'));
+assert.strictEqual(ui.setupBody(s,{...fields,nfsPath:''}).nfsPath,'');
+assert.strictEqual(ui.setupBody(s,{...fields,nfsVersion:undefined}).nfsVersion,3);
+assert.strictEqual(ui.setupBody(s,{...fields,nfsUid:'4294967294'}).nfsUid,4294967294);
+assert.throws(()=>ui.setupBody(s,{...fields,nfsExport:'volume1'}),/starting with/);
+assert.throws(()=>ui.setupBody(s,{...fields,nfsExport:''}),/export path/);
+assert.throws(()=>ui.setupBody(s,{...fields,nfsPath:'/games'}),/leading/);
+assert.throws(()=>ui.setupBody(s,{...fields,nfsPath2:fields.nfsPath}),/two different/);
+assert.doesNotThrow(()=>ui.setupBody(s,{...fields,nfsPath:'Games',nfsPath2:'games'}));
+for (const bad of ['','-1','01','1.5','4294967295','abc']) assert.throws(()=>ui.setupBody(s,{...fields,nfsUid:bad}),/user ID/);
+assert.throws(()=>ui.setupBody(s,{...fields,nfsGid:'x'}),/group ID/);
+assert.throws(()=>ui.setupBody(s,{...fields,nfsVersion:'2'}),/3 or 4/);
+const smb=ui.setupBody(s,{server:'pc',share:'Games',user:'project-fixture',keep:true});assert(!Object.hasOwn(smb,'transport'));
+const nfsState={backend:'native',setup:{configured:true},library:{phase:'ready'},settings:{server:'nas',transport:'nfs',nfsExport:'/',nfsPath:'games',nfsPath2:null}};
+assert.strictEqual(ui.connection(nfsState).folder,'nas:/games');
+nfsState.settings.nfsExport='/volume1';nfsState.settings.nfsPath='';nfsState.settings.nfsPath2='images';
+assert.strictEqual(ui.connection(nfsState).folder,'nas:/volume1 + nas:/volume1/images');
+const bs=String.fromCharCode(92);assert.strictEqual(ui.connection({backend:'native',settings:{server:'pc',share:'Games'}}).folder,bs+bs+'pc'+bs+'Games');
+''')
+
+    def test_nfs_setup_dom_switch_hides_sign_in_and_posts_exact_fields(self):
+        result = subprocess.run(["node", str(Path(__file__).with_name("nfs_setup_dom_harness.js")),
+                                 str(ROOT / "desk" / "index.html")], text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_same_relative_path_in_two_shares_uses_the_selected_binding(self):
         self.behavior('''
 const a='PPSA90001_'+'a'.repeat(64),b='PPSA90001_'+'b'.repeat(64),c=catalogFixture();
