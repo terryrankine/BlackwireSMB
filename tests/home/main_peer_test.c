@@ -48,6 +48,9 @@ int main(void){
     for(unsigned i=0;i<sizeof bad/sizeof *bad;i++){snprintf(request,sizeof request,"GET /api/state HTTP/1.1\r\nHost: %s\r\n\r\n",bad[i]);exchange(request,1,response);C(strstr(response,"HTTP/1.0 421 ")&&normal_requests==before);}
     exchange("GET / HTTP/1.1\r\n\r\n",1,response);C(strstr(response,"HTTP/1.0 400 "));
     exchange("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nHost: evil.invalid\r\n\r\n",1,response);C(strstr(response,"HTTP/1.0 400 "));
+    /* obs-fold continuation lines are refused, not silently skipped. */
+    exchange("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Fold: a\r\n b\r\n\r\n",1,response);C(strstr(response,"HTTP/1.0 400 "));
+    exchange("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n\tHost: evil.invalid\r\n\r\n",1,response);C(strstr(response,"HTTP/1.0 400 "));
     exchange("GET / HTTP/1.0\r\n\r\n",1,response);C(strstr(response,"HTTP/1.0 200 ")); /* HTTP/1.0 may omit Host. */
     /* Cross-origin POST is refused before any handler; absent Origin is native. */
     const char *post="POST /api/refresh HTTP/1.1\r\nHost: %s\r\nContent-Type: application/json\r\nContent-Length: 2\r\n%s\r\n{}";

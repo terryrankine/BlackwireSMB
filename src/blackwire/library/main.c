@@ -739,6 +739,9 @@ static int read_request(int fd, char *buf, size_t cap, double deadline) {
           line += 2;
           next = strstr(line, "\r\n");
           if (!next || next > headers_end) return -1;
+          /* RFC 9112 5.2 allows a server only to reject or unfold obs-fold.
+           * Skipping it would let a folded line hide a value from the checks. */
+          if (*line == ' ' || *line == '\t') return -1;
           if (strncasecmp(line, "Transfer-Encoding:", 18) == 0) return -1;
           if (strncasecmp(line, "Content-Length:", 15) == 0) {
             char *end;
