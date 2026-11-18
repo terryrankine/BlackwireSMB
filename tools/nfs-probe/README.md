@@ -37,6 +37,9 @@ line at a time, so a hang still leaves the lines written so far.
     then be warm.
 - Every failure is an `ERROR:` line with the libnfs return code and
   `nfs_get_error` text. The last line is `result: PASS` or `result: FAIL`.
+- A failed stdout write is not a probe failure. The probe stops writing to
+  stdout, keeps writing the file, and adds a `warning: stdout write failed`
+  line before the result. A failed file write is still a failure.
 
 ## Settings
 
