@@ -32,6 +32,8 @@ static unsigned char large_out[1024u*1024u],large_expected[sizeof large_out];
 static unsigned services,paired_services,async_drained;
 static int async_fail_queue,async_inline_error,async_service_fail,async_poll_error,async_poll_eintr;
 static int async_one_at_time,async_reverse,async_cancel,async_timeout,async_idle;
+/* Share refusal drives source.c's real table: status must follow connect. */
+static int fail_connect;static unsigned nterror_reads;static uint32_t nterror_value;
 struct smb2fh {unsigned id;struct smb2fh *next;};
 struct async_stat {int active,kind;const char *path;struct smb2fh *fh;struct smb2_stat_64 *out;smb2_command_cb cb;void *opaque;};
 struct smb2_context {struct smb2fh *handles;unsigned char *pending;int signing;uint16_t security_mode;struct async_stat metadata[2];};
@@ -55,8 +57,9 @@ void smb2_set_user(struct smb2_context *c,const char *u){CHECK(c&&u&&!strcmp(u,"
 void smb2_set_password(struct smb2_context *c,const char *p){CHECK(c&&p&&!strcmp(p,""));}
 void smb2_set_sign(struct smb2_context *c,int required){CHECK(c&&required==1);c->signing=required;}
 void smb2_set_security_mode(struct smb2_context *c,uint16_t m){CHECK(c&&m==(SMB2_NEGOTIATE_SIGNING_ENABLED|SMB2_NEGOTIATE_SIGNING_REQUIRED));c->security_mode=m;}
-int smb2_connect_share(struct smb2_context *c,const char *s,const char *h,const char *u){connects++;CHECK(c&&c->signing==1&&c->security_mode==(SMB2_NEGOTIATE_SIGNING_ENABLED|SMB2_NEGOTIATE_SIGNING_REQUIRED)&&!strcmp(s,"192.0.2.1")&&!strcmp(h,"fixture")&&!strcmp(u,"fixture"));return 0;}
-int smb2_get_nterror(struct smb2_context *c){CHECK(c);return 0;}
+int smb2_connect_share(struct smb2_context *c,const char *s,const char *h,const char *u){connects++;CHECK(c&&c->signing==1&&c->security_mode==(SMB2_NEGOTIATE_SIGNING_ENABLED|SMB2_NEGOTIATE_SIGNING_REQUIRED)&&!strcmp(s,"192.0.2.1")&&!strcmp(h,"fixture")&&!strcmp(u,"fixture"));
+    if(fail_connect){errno=ECONNREFUSED;return -113;}return 0;}
+int smb2_get_nterror(struct smb2_context *c){CHECK(c);nterror_reads++;if(fail_connect)CHECK(errno==ECONNREFUSED);return (int)nterror_value;}
 uint32_t smb2_get_max_read_size(struct smb2_context *c){CHECK(c);return negotiated_limit;}
 static int path_id(const char *p){unsigned id;char tail;return sscanf(p,"Fixture Title/stream%02u.pak%c",&id,&tail)==1&&id<18?(int)id:-1;}
 static void stat_of(unsigned id,struct smb2_stat_64 *s){memset(s,0,sizeof *s);s->smb2_type=SMB2_TYPE_FILE;s->smb2_size=stream_size+id;s->smb2_ino=100+id+(unsigned)changed;s->smb2_mtime=100;s->smb2_mtime_nsec=7;s->smb2_ctime=200;s->smb2_ctime_nsec=9;}
@@ -127,6 +130,7 @@ static void fixture(void){
     negotiated_limit=BP_COALESCE_BYTES;trace_count=clock_fault=clock_reverse=0;
     async_fail_queue=async_inline_error=async_service_fail=async_poll_error=async_poll_eintr=0;
     async_one_at_time=async_reverse=async_cancel=async_timeout=async_idle=0;
+    fail_connect=0;nterror_reads=0;nterror_value=0;
     memset(map,0,sizeof map);memcpy(map,"BWMAP002",8);put32(map+8,2);put32(map+12,32);put32(map+16,20);
     size_t pool=40+20*32,offset=0;
     for(unsigned i=0;i<20;i++){
@@ -183,6 +187,10 @@ int main(void){
     fixture();cases++;calls=connects;p=NULL;CHECK(!bp_source_admit(&p,map,map_size,selection,selection_size,share,sizeof share-1,guard,&canceled));CHECK(connects==calls);
     id=match(p,0);CHECK(bp_source_read(p,id,0,out,1)==-EIO);CHECK(connects==calls);CHECK(!bp_source_connect(p));CHECK(connects==calls+1);CHECK(bp_source_read(p,id,0,out,1)==1);CHECK(!bp_source_close(p));
     fixture();cases++;calls=connects;p=NULL;CHECK(!bp_source_admit(&p,map,map_size,selection,selection_size,share,sizeof share-1,guard,&canceled));CHECK(!bp_source_close(p));CHECK(calls==connects);
+    fixture();cases++;calls=connects;before=destroys;fail_connect=1;nterror_value=0xc000006du;p=NULL;CHECK(!bp_source_admit(&p,map,map_size,selection,selection_size,share,sizeof share-1,guard,&canceled));
+    CHECK(bp_source_connect(p)==-1);memset(&connect_diagnostic,0xa5,sizeof connect_diagnostic);bp_source_connect_diagnostic(p,&connect_diagnostic);
+    CHECK(connect_diagnostic.stage==BP_CONNECT_SHARE&&connect_diagnostic.raw==-113&&connect_diagnostic.error==ECONNREFUSED&&connect_diagnostic.options_returned==5&&connect_diagnostic.ntstatus_valid==1&&connect_diagnostic.ntstatus==0xc000006du);
+    CHECK(connects==calls+1&&nterror_reads==1&&destroys==before+1);CHECK(!bp_source_close(p));
     fixture();cases++;struct bw_share_config cfg;struct bw_source_binding raw,profile;CHECK(bw_source_profile_enabled()==1);CHECK(!bw_share_parse(&cfg,share,sizeof share-1));
     CHECK(!bw_source_binding_init(&raw,&cfg,"Fixture Title","PPSA04263"));CHECK(!bw_source_binding_resolve(&profile,&cfg,"Fixture Title","PPSA04263"));CHECK(strcmp(raw.game,profile.game)!=0);
     strcpy(selected.title,profile.title);strcpy(selected.game,profile.game);strcpy(selected.binding_hex,profile.game+10);CHECK(!bw_reader_selection_serialize(&selected,selection,sizeof selection,&selection_size));p=open_source();CHECK(!bp_source_close(p));
