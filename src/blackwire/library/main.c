@@ -720,6 +720,8 @@ static int read_request(int fd, char *buf, size_t cap, double deadline) {
   while (n + 1 < cap) {
     if (http_wait(fd, POLLIN, deadline)) break;
     ssize_t got = read(fd, buf + n, cap - 1 - n);
+    /* A signal is not end of stream. Retry within the same request budget. */
+    if (got < 0 && errno == EINTR) continue;
     if (got <= 0) {
       break;
     }
