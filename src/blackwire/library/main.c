@@ -613,7 +613,9 @@ static int media_public_handle(const char *method,const char *url,const void *bo
 
 /* SO_RCVTIMEO/SO_SNDTIMEO bound one call only. A peer that drips one byte per
  * call could otherwise hold this single-threaded listener indefinitely, so a
- * request read and a response write each also get one total budget. */
+ * request read also gets one 5 s total budget. A response can be a 16 MiB
+ * cover, which a slow link cannot take in 5 s, so a response write instead
+ * gets a 5 s stall budget that each write making progress renews. */
 static double http_now(void){struct timespec t;return clock_gettime(CLOCK_MONOTONIC,&t)?-1:(double)t.tv_sec+(double)t.tv_nsec/1e9;}
 static double http_deadline(void){double now=http_now();return now<0?-1:now+5.0;}
 static int http_wait(int fd,short events,double deadline){
@@ -623,14 +625,14 @@ static int http_wait(int fd,short events,double deadline){
     if(rc<0&&errno==EINTR)continue;if(rc<0||p.revents&POLLNVAL)return -1;if(rc>0)return 0;
   }
 }
-static int http_write(int fd,const void *data,size_t len,double deadline){
-  const char *p=data;size_t off=0;
+static int http_write(int fd,const void *data,size_t len){
+  const char *p=data;size_t off=0;double deadline=http_deadline();
   while(off<len){
-    if(http_wait(fd,POLLOUT,deadline))return -1;
+    if(deadline<0||http_wait(fd,POLLOUT,deadline))return -1;
     /* Writable promises only the send low-water mark. Short writes keep one
      * blocking call near that space; SO_SNDTIMEO remains the backstop. */
     size_t chunk=len-off<2048?len-off:2048;ssize_t n=write(fd,p+off,chunk);
-    if(n<0&&errno==EINTR)continue;if(n<=0)return -1;off+=(size_t)n;
+    if(n<0&&errno==EINTR)continue;if(n<=0)return -1;off+=(size_t)n;deadline=http_deadline();
   }return 0;
 }
 
@@ -642,11 +644,17 @@ static void send_bytes(int fd, int code, const char *status, const char *type, c
                    "HTTP/1.0 %d %s\r\nContent-Type: %s\r\nContent-Length: %llu\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n"
                    "X-Frame-Options: DENY\r\nContent-Security-Policy: frame-ancestors 'none'\r\nReferrer-Policy: no-referrer\r\nConnection: close\r\n\r\n",
                    code, status, type, (unsigned long long)len);
-  double deadline = http_deadline();
+  char failure[128];
 
-  if (n < 0 || (size_t)n >= sizeof hdr || deadline < 0) return;
-  if (http_write(fd, hdr, (size_t)n, deadline)) return;
-  http_write(fd, data, len, deadline);
+  if (n < 0 || (size_t)n >= sizeof hdr) {
+    log_line("response header did not fit");return;
+  }
+  /* Content-Length is already sent, so a client sees a short body. The log
+   * line tells a slow or stalled link apart from a server fault. */
+  if (http_write(fd, hdr, (size_t)n) || http_write(fd, data, len)) {
+    snprintf(failure, sizeof failure, "response write stalled or failed status=%d bytes=%llu", code, (unsigned long long)len);
+    log_line(failure);
+  }
 }
 
 static void send_text(int fd, int code, const char *status, const char *type, const char *text) {

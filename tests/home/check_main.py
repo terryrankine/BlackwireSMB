@@ -24,7 +24,7 @@ struct bd_resident;static struct bw_native_backend *native_backend;static struct
 static const unsigned char page_html[]={1},brand_logo_png[]={2};static const size_t page_html_size=1,brand_logo_png_size=1;
 int bd_resident_handle(struct bd_resident*,const char*,const char*,const void*,size_t,const char*,struct bw_native_response*);
 #define PORT 5918
-static void log_line(const char *line){(void)line;}
+static char last_log[160];static void log_line(const char *line){snprintf(last_log,sizeof last_log,"%s",line);}
 static int health_document(char *out,size_t capacity){return snprintf(out,capacity,"{}");}
 '''
 header.write_text(prefix+'\n'.join(function(raw,n) for n in ['static int write_full(','static double http_now(','static double http_deadline(','static int http_wait(','static int http_write(','static void send_bytes(','static void send_text(','static int read_request(','static int native_header(','static int http_address_local(','static int http_host_allowed(','static int http_request_refusal(','static int native_reader_peer(','static void serve(']))

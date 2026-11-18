@@ -14,7 +14,14 @@ int bw_native_backend_home_claim(struct bw_native_backend*p,const void*raw,size_
     const char *reply=peer&&header&&!origin?"{\"accepted\":true}":"{\"error\":\"refused\"}";out->status=peer&&header&&!origin?202:403;out->type="application/json";out->size=strlen(reply);out->bytes=malloc(out->size+1);C(out->bytes);memcpy(out->bytes,reply,out->size+1);return 0;
 }
 int bd_resident_handle(struct bd_resident*p,const char*m,const char*u,const void*b,size_t n,const char*t,struct bw_native_response*out){(void)p;(void)m;(void)u;(void)b;(void)n;(void)t;(void)out;normal_requests++;return 1;}
-int bw_native_backend_handle_authenticated(struct bw_native_backend*p,const char*m,const char*u,const void*b,size_t n,const char*t,struct bw_native_response*out){(void)p;(void)m;(void)u;(void)b;(void)n;(void)t;normal_requests++;out->status=404;out->type="application/json";out->bytes=strdup("{}");out->size=2;return 0;}
+#define BIG_BODY (512u*1024u)
+int bw_native_backend_handle_authenticated(struct bw_native_backend*p,const char*m,const char*u,const void*b,size_t n,const char*t,struct bw_native_response*out){(void)p;(void)m;(void)b;(void)n;(void)t;normal_requests++;
+    /* A cover-sized body that small socket buffers cannot hold at once. */
+    if(!strcmp(u,"/big")){out->status=200;out->type="application/octet-stream";out->bytes=malloc(BIG_BODY);C(out->bytes);memset(out->bytes,'x',BIG_BODY);out->size=BIG_BODY;return 0;}
+    out->status=404;out->type="application/json";out->bytes=strdup("{}");out->size=2;return 0;}
+/* Small buffers make the response outrun the socket after a few KiB. */
+static void small_buffers(int sender,int receiver){int size=4096;C(!setsockopt(sender,SOL_SOCKET,SO_SNDBUF,&size,sizeof size));C(!setsockopt(receiver,SOL_SOCKET,SO_RCVBUF,&size,sizeof size));}
+static double seconds_since(const struct timespec *began){struct timespec now;C(!clock_gettime(CLOCK_MONOTONIC,&now));return (double)(now.tv_sec-began->tv_sec)+(double)(now.tv_nsec-began->tv_nsec)/1e9;}
 void bw_native_response_clear(struct bw_native_response*out){free(out->bytes);memset(out,0,sizeof *out);}
 void bw_native_sensitive_clear(void*p,size_t n){memset(p,0,n);}
 static void exchange(const char *request,int tcp,char response[4096]){
@@ -76,6 +83,28 @@ int main(void){
         serve(pair[1],"127.0.0.1");C(!close(pair[1]));C(!clock_gettime(CLOCK_MONOTONIC,&ended));
         double elapsed=(double)(ended.tv_sec-began.tv_sec)+(double)(ended.tv_nsec-began.tv_nsec)/1e9;C(elapsed>=4.5&&elapsed<6.5);
         C(!kill(child,SIGKILL));int status;C(waitpid(child,&status,0)==child);
+    }
+    const char *big="GET /big HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n";
+    /* A peer that stops reading is cut off after the 5 s stall budget, and the
+     * short write is logged instead of dropped. */
+    {
+        cases++;int pair[2];C(!socketpair(AF_UNIX,SOCK_STREAM,0,pair));small_buffers(pair[1],pair[0]);
+        C(write(pair[0],big,strlen(big))==(ssize_t)strlen(big));C(!shutdown(pair[0],SHUT_WR));last_log[0]=0;
+        struct timespec began;C(!clock_gettime(CLOCK_MONOTONIC,&began));serve(pair[1],"127.0.0.1");double elapsed=seconds_since(&began);
+        C(elapsed>=4.5&&elapsed<20.0);C(strstr(last_log,"response write stalled or failed status=200 bytes=524288"));C(!close(pair[1]));C(!close(pair[0]));
+    }
+    /* A slow peer that keeps reading takes longer than 5 s in total but still
+     * receives the whole body, because each write that makes progress renews
+     * the stall budget. */
+    {
+        cases++;int pair[2];C(!socketpair(AF_UNIX,SOCK_STREAM,0,pair));small_buffers(pair[1],pair[0]);
+        C(write(pair[0],big,strlen(big))==(ssize_t)strlen(big));C(!shutdown(pair[0],SHUT_WR));last_log[0]=0;pid_t child=fork();C(child>=0);
+        if(!child){close(pair[1]);char head[16]={0},chunk[4096];size_t total=0;
+            for(;;){ssize_t got=read(pair[0],chunk,sizeof chunk);if(got<0&&errno==EINTR)continue;if(got<=0)break;if(total<sizeof head-1)memcpy(head+total,chunk,(size_t)got<sizeof head-1-total?(size_t)got:sizeof head-1-total);
+                total+=(size_t)got;struct timespec t={0,50000000};nanosleep(&t,NULL);}
+            _exit(!memcmp(head,"HTTP/1.0 200 ",13)&&total>BIG_BODY&&total<BIG_BODY+512?0:1);}
+        C(!close(pair[0]));struct timespec began;C(!clock_gettime(CLOCK_MONOTONIC,&began));serve(pair[1],"127.0.0.1");double elapsed=seconds_since(&began);C(!close(pair[1]));
+        int status;C(waitpid(child,&status,0)==child);C(WIFEXITED(status)&&!WEXITSTATUS(status));C(elapsed>5.5&&!last_log[0]);
     }
     printf("{\"passed\":true,\"cases\":%u,\"checks\":%u,\"actualHttpParserAndTrustedPeerRoute\":true,\"backendQueueModeled\":true,\"hostOriginAndBudgetRefusals\":true}\n",cases,checks);return 0;
 }
