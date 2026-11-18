@@ -20,7 +20,7 @@ int main(int argc,char **argv){C(argc==6);int folder=!strcmp(argv[1],"folder");c
     struct bw_source_smb source={.smb=&context,.deadline=now()+600};struct bw_share_config config={0};strcpy(config.server,"192.0.2.1");strcpy(config.share,"FixtureShare");
     struct bw_provider_binding binding;C(!bw_provider_binding_init(&binding,&config,folder?"fixture":"fixture.ffpfsc","PPSA99001",folder?BW_PROVIDER_FOLDER:BW_PROVIDER_CONTAINER));
     struct bw_container_smb *image=NULL;struct image_source input={.context=&context};
-    if(!folder){load_image(&input,argv[3]);image=calloc(1,sizeof *image);C(image);strcpy(image->path,"fixture.ffpfsc");image->handle=(struct smb2fh *)image;image->admitted.smb2_ino=7;image->admitted.smb2_size=input.size;image->admitted.smb2_mtime=1700000000;struct bw_container_ops ops={image_read,image_generation};C(!bw_container_open(&image->container,&ops,&input,input.size));}
+    if(!folder){load_image(&input,argv[3]);image=calloc(1,sizeof *image);C(image);strcpy(image->path,"fixture.ffpfsc");image->handle=(struct smb2fh *)image;image->admitted.ino=7;image->admitted.size=input.size;image->admitted.mtime=1700000000;struct bw_container_ops ops={image_read,image_generation};C(!bw_container_open(&image->container,&ops,&input,input.size));}
     char data[1600],apps[1600],db[1600],save[1600],log[1600],game[1800],state[1800],path[2000];
     C(snprintf(data,sizeof data,"%s/data",argv[4])>0&&!mkdir(data,0755));C(snprintf(apps,sizeof apps,"%s/apps",argv[4])>0&&!mkdir(apps,0770));C(snprintf(db,sizeof db,"%s/app.db",argv[4])>0);empty_db(db);
     C(snprintf(save,sizeof save,"%s/saved-game.bin",argv[4])>0);file_write(save,"untouched save",14);uint8_t before_save[32];fingerprint(save,before_save);

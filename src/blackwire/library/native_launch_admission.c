@@ -273,7 +273,7 @@ static int na_container_source(struct bw_native_launch_admission *p,struct bw_so
     const uint8_t *original_sha=p->companions?p->companions->original_map_sha256:p->map_sha256;
     if(!image||na_source_current(p)||bw_container_smb_open_owned_metadata(image,&source->smb,p->identity.binding.source)||
        bw_container_manifest_bind(&files,&image->container,original)||na_source_current(p))goto done;
-    bw_provider_image_generation(&p->identity,&image->admitted,original_sha,generation);
+    bw_provider_image_generation_stat(&p->identity,&image->admitted,original_sha,generation);
     if(memcmp(generation,p->generation,32)||bw_container_validate(&image->container)||na_current(p))goto done;
     result=0;
 done:

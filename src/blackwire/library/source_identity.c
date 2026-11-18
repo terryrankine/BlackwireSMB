@@ -1,20 +1,23 @@
 #include "source_identity.h"
+#include "../streamreader/bw_stat_smb2.h"
 #include "../streamreader/copy_sha256.h"
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
-#include <smb2/smb2.h>
-#include <smb2/libsmb2.h>
 
-void bw_provider_image_generation(const struct bw_provider_binding *identity,const struct smb2_stat_64 *stat,
+void bw_provider_image_generation_stat(const struct bw_provider_binding *identity,const struct bw_stat *stat,
     const uint8_t map_sha256[32],uint8_t out[32]){
     static const char domain[]="Blackwire immutable SMB image generation v1";
-    const uint64_t fields[]={stat->smb2_type,stat->smb2_ino,stat->smb2_size,stat->smb2_mtime,
-        stat->smb2_mtime_nsec,stat->smb2_ctime,stat->smb2_ctime_nsec,identity->policy};
+    const uint64_t fields[]={stat->type,stat->ino,stat->size,stat->mtime,
+        stat->mtime_nsec,stat->ctime,stat->ctime_nsec,identity->policy};
     uint8_t row[64];for(unsigned i=0;i<8;i++)for(unsigned j=0;j<8;j++)row[8*i+j]=(uint8_t)(fields[i]>>(8*j));
     struct cp_sha sha;cp_sha_init(&sha);cp_sha_update(&sha,domain,sizeof domain);
     cp_sha_update(&sha,identity->binding.sha256,32);cp_sha_update(&sha,row,sizeof row);
     cp_sha_update(&sha,map_sha256,32);cp_sha_final(&sha,out);
+}
+void bw_provider_image_generation(const struct bw_provider_binding *identity,const struct smb2_stat_64 *stat,
+    const uint8_t map_sha256[32],uint8_t out[32]){
+    struct bw_stat neutral;bw_stat_from_smb2(&neutral,stat);bw_provider_image_generation_stat(identity,&neutral,map_sha256,out);
 }
 int bw_provider_binding_init(struct bw_provider_binding *out,const struct bw_share_config *config,
     const char *source,const char *title,enum bw_provider_kind kind) {

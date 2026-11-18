@@ -252,7 +252,8 @@ def host_tests(root, out, source, runner):
                         ("settings_check_failure", "diagnostics/check_settings_check_failure.py"),
                         ("catalog_image_failure", "diagnostics/check_catalog_image_failure.py"),
                         ("registration_wait", "diagnostics/check_registration_wait.py"),
-                        ("two_shares", "sources/check_two_shares.py")):
+                        ("two_shares", "sources/check_two_shares.py"),
+                        ("identity_golden", "sources/check_identity_golden.py")):
         checked = out / key
         runner.run(["python3", root / "tests" / script, "--output", checked], "host-" + key)
         results[key] = json.loads((checked / "proof.json").read_text())

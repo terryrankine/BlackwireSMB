@@ -19,6 +19,7 @@
 #include <sys/socket.h>
 #include <smb2/smb2.h>
 #include <smb2/libsmb2.h>
+#include "bw_stat_smb2.h"
 #endif
 #ifndef BW_COPY_DATA
 #define BW_COPY_DATA "/data/blackwire"
@@ -464,21 +465,17 @@ static int cp_share_field(char *out,size_t capacity,const char *key,int required
     if(!next)break;line=next;}
   memset(data,0,sizeof data);return required&&!seen?-1:0;
 }
-static int cp_smb_same(const struct smb2_stat_64 *a,const struct smb2_stat_64 *b) {
-  return a->smb2_type==SMB2_TYPE_FILE&&b->smb2_type==SMB2_TYPE_FILE&&a->smb2_size==b->smb2_size&&a->smb2_ino==b->smb2_ino&&
-    a->smb2_mtime==b->smb2_mtime&&a->smb2_mtime_nsec==b->smb2_mtime_nsec&&a->smb2_ctime==b->smb2_ctime&&a->smb2_ctime_nsec==b->smb2_ctime_nsec;
+static void cp_remote_observe(struct cp_remote_observation *out,const struct bw_stat *st) {
+  out->type=st->type;out->size=st->size;out->inode=st->ino;
+  out->mtime=st->mtime;out->mtime_nsec=st->mtime_nsec;out->ctime=st->ctime;out->ctime_nsec=st->ctime_nsec;
 }
-static void cp_remote_observe(struct cp_remote_observation *out,const struct smb2_stat_64 *st) {
-  out->type=st->smb2_type;out->size=st->smb2_size;out->inode=st->smb2_ino;
-  out->mtime=st->smb2_mtime;out->mtime_nsec=st->smb2_mtime_nsec;out->ctime=st->smb2_ctime;out->ctime_nsec=st->smb2_ctime_nsec;
-}
-static int cp_smb_current(struct smb2_context *smb,struct smb2fh *fh,const char *path,const struct smb2_stat_64 *before) {
-  struct smb2_stat_64 opened,named;errno=0;int rc=smb2_fstat(smb,fh,&opened);
-  if(rc){cp_failure("sourceGeneration.opened-stat",rc,errno);return 0;}cp_remote_observe(&cp_diagnostic.opened,&opened);cp_diagnostic.remote_flags|=2;
-  errno=0;rc=smb2_stat(smb,path,&named);if(rc){cp_failure("sourceGeneration.named-stat",rc,errno);return 0;}
-  cp_remote_observe(&cp_diagnostic.named,&named);cp_diagnostic.remote_flags|=4;
-  if(!cp_smb_same(before,&opened)){cp_failure("sourceGeneration.opened-changed",0,0);return 0;}
-  if(!cp_smb_same(before,&named)){cp_failure("sourceGeneration.named-changed",0,0);return 0;}
+static int cp_smb_current(struct smb2_context *smb,struct smb2fh *fh,const char *path,const struct bw_stat *before) {
+  struct smb2_stat_64 raw;struct bw_stat opened,named;errno=0;int rc=smb2_fstat(smb,fh,&raw);
+  if(rc){cp_failure("sourceGeneration.opened-stat",rc,errno);return 0;}bw_stat_from_smb2(&opened,&raw);cp_remote_observe(&cp_diagnostic.opened,&opened);cp_diagnostic.remote_flags|=2;
+  errno=0;rc=smb2_stat(smb,path,&raw);if(rc){cp_failure("sourceGeneration.named-stat",rc,errno);return 0;}
+  bw_stat_from_smb2(&named,&raw);cp_remote_observe(&cp_diagnostic.named,&named);cp_diagnostic.remote_flags|=4;
+  if(!bw_stat_same_file(before,&opened)){cp_failure("sourceGeneration.opened-changed",0,0);return 0;}
+  if(!bw_stat_same_file(before,&named)){cp_failure("sourceGeneration.named-changed",0,0);return 0;}
   return 1;
 }
 static int cp_source_file(struct cp_plan *p,struct smb2_context *smb,int root,uint32_t i) {
@@ -497,10 +494,10 @@ static int cp_source_file(struct cp_plan *p,struct smb2_context *smb,int root,ui
     close(parent);return exists;
   }
   int n=snprintf(source,sizeof source,"%s/%s",p->cfg.game,r.path);if(n<0||(size_t)n>=sizeof source){close(parent);return cp_failure("source.path",n,0);}
-  struct smb2_stat_64 before;struct smb2fh *fh=NULL;int fd=-1,bad=1,known_temp=0;struct stat created;
-  errno=0;rc=smb2_stat(smb,source,&before);if(rc){cp_failure("source.named-stat",rc,errno);goto done;}
-  cp_remote_observe(&cp_diagnostic.before,&before);cp_diagnostic.remote_flags=1;
-  if(before.smb2_type!=SMB2_TYPE_FILE||before.smb2_size!=r.size||before.smb2_mtime!=r.mtime_sec){cp_failure("source.named-metadata",0,0);goto done;}
+  struct smb2_stat_64 raw;struct bw_stat before;struct smb2fh *fh=NULL;int fd=-1,bad=1,known_temp=0;struct stat created;
+  errno=0;rc=smb2_stat(smb,source,&raw);if(rc){cp_failure("source.named-stat",rc,errno);goto done;}
+  bw_stat_from_smb2(&before,&raw);cp_remote_observe(&cp_diagnostic.before,&before);cp_diagnostic.remote_flags=1;
+  if(before.type!=BW_TP_FILE||before.size!=r.size||before.mtime!=r.mtime_sec){cp_failure("source.named-metadata",0,0);goto done;}
   errno=0;fh=smb2_open(smb,source,O_RDONLY);if(!fh){cp_failure("source.readonly-open",0,errno);goto done;}
   if(!cp_smb_current(smb,fh,source,&before))goto done;
   n=snprintf(temp,sizeof temp,".blackwire-copy-%s-%u.tmp",p->cfg.run_id,i);if(n<0||(size_t)n>=sizeof temp){cp_failure("destination.temporary-name",n,0);goto done;}

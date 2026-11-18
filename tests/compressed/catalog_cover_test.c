@@ -52,7 +52,7 @@ int main(int argc,char **argv){
  else{
   cases++;C(!bw_source_catalog_container_cover(&s,&item,BW_SOURCE_SMALL_FILE_LIMIT,&bytes,&size));C(size==expected&&bytes&&!memcmp(bytes,"\x89PNG\r\n\x1a\n",8));free(bytes);
   cases++;before=opens;C(bw_source_catalog_container_cover(&s,&item,expected-1,&bytes,&size)==1);C(!bytes&&!size&&opens==before);
-  cases++;reset(&s);struct bw_catalog_item different=item;different.image.smb2_ino++;no_bytes(&s,&different);
+  cases++;reset(&s);struct bw_catalog_item different=item;different.image.ino++;no_bytes(&s,&different);
   cases++;reset(&s);changed=1;no_bytes(&s,&item);
   cases++;reset(&s);fail_read=1;unsigned destroyed=destroys;no_bytes(&s,&item);C(!s.smb&&destroys==destroyed+1);
   cases++;reset(&s);fail_close=1;no_bytes(&s,&item);C(!s.smb);

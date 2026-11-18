@@ -32,13 +32,10 @@ const char *bw_source_catalog_format(const struct bw_catalog_item *p){
     switch(p->container_kind){case BW_CONTAINER_PFS:return "pfs";case BW_CONTAINER_PFSC_PFS:return "pfsc_pfs";case BW_CONTAINER_WRAPPED_PFS:return "nested_pfs";
     case BW_CONTAINER_EXFAT:return "exfat";case BW_CONTAINER_PFSC_EXFAT:return "pfsc_exfat";case BW_CONTAINER_WRAPPED_EXFAT:return "nested_exfat";default:return "";}
 }
-int bw_source_catalog_image_same(const struct smb2_stat_64 *a,const struct smb2_stat_64 *b){
-    return a&&b&&a->smb2_type==SMB2_TYPE_FILE&&b->smb2_type==SMB2_TYPE_FILE&&a->smb2_ino==b->smb2_ino&&a->smb2_size==b->smb2_size&&
-        a->smb2_mtime==b->smb2_mtime&&a->smb2_mtime_nsec==b->smb2_mtime_nsec&&a->smb2_ctime==b->smb2_ctime&&a->smb2_ctime_nsec==b->smb2_ctime_nsec;
-}
-void bw_source_catalog_image_hash(const struct smb2_stat_64 *p,uint8_t out[32]){
+int bw_source_catalog_image_same(const struct bw_stat *a,const struct bw_stat *b){return bw_stat_same_file(a,b);}
+void bw_source_catalog_image_hash(const struct bw_stat *p,uint8_t out[32]){
     static const char domain[]="Blackwire catalog image generation v1";
-    const uint64_t fields[]={p->smb2_type,p->smb2_ino,p->smb2_size,p->smb2_mtime,p->smb2_mtime_nsec,p->smb2_ctime,p->smb2_ctime_nsec};
+    const uint64_t fields[]={p->type,p->ino,p->size,p->mtime,p->mtime_nsec,p->ctime,p->ctime_nsec};
     struct cp_sha sha;cp_sha_init(&sha);cp_sha_update(&sha,domain,sizeof domain);
     for(unsigned i=0;i<7;i++){uint8_t bytes[8];for(unsigned j=0;j<8;j++)bytes[j]=(uint8_t)(fields[i]>>(8*j));cp_sha_update(&sha,bytes,8);}
     cp_sha_final(&sha,out);
@@ -50,9 +47,9 @@ static int listed_time(uint64_t ticks,uint64_t seconds,uint64_t nsec){
     const uint64_t epoch=UINT64_C(116444736000000000);
     return ticks>=epoch&&(ticks-epoch)/10000000==seconds&&((ticks-epoch)%10000000)/10==nsec/1000;
 }
-static int listed_image(const struct bw_source_info *listed,const struct smb2_stat_64 *actual){
-    return !(listed->attributes&0x450u)&&actual->smb2_type==SMB2_TYPE_FILE&&listed->inode==actual->smb2_ino&&listed->size==actual->smb2_size&&
-        listed_time(listed->mtime_ticks,actual->smb2_mtime,actual->smb2_mtime_nsec)&&listed_time(listed->ctime_ticks,actual->smb2_ctime,actual->smb2_ctime_nsec);
+static int listed_image(const struct bw_source_info *listed,const struct bw_stat *actual){
+    return !(listed->attributes&0x450u)&&actual->type==BW_TP_FILE&&listed->inode==actual->ino&&listed->size==actual->size&&
+        listed_time(listed->mtime_ticks,actual->mtime,actual->mtime_nsec)&&listed_time(listed->ctime_ticks,actual->ctime,actual->ctime_nsec);
 }
 static int fail(struct bw_source_catalog *p,const char *error){if(!p->error)p->error=error;return -1;}
 static const char *image_operation(enum bw_container_smb_failure_operation operation){

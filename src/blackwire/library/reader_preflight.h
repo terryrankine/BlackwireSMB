@@ -4,6 +4,7 @@
 #include "reader_selection.h"
 #include "reader_source.h"
 #include "../tools/compressed_stream_candidate/compressed_stream.h"
+#include "../streamreader/bw_stat.h"
 struct bw_native_launch_admission;
 
 /* Zero initialize; destroy before reuse. No provider/parser/grant transfers.
@@ -12,7 +13,7 @@ struct bw_native_launch_admission;
  * the reader must separately capture/validate the complete typed claim. */
 struct bw_reader_data_admission {
     struct bw_provider_binding identity;
-    struct smb2_stat_64 image;
+    struct bw_stat image;
     uint8_t map_sha256[32],generation_sha256[32];
     unsigned valid;
     uint8_t *provenance_bytes;

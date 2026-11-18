@@ -35,8 +35,8 @@ static int image_current(void *opaque) {
     int result=p->image_ops.generation(p->image_source);
     return result||guard(p)?-1:0;
 }
-static void image_generation(const struct bw_source_provider *p,const struct smb2_stat_64 *stat,uint8_t out[32]) {
-    bw_provider_image_generation(&p->identity,stat,p->container.map_sha256,out);
+static void image_generation(const struct bw_source_provider *p,const struct bw_stat *stat,uint8_t out[32]) {
+    bw_provider_image_generation_stat(&p->identity,stat,p->container.map_sha256,out);
 }
 struct observed {struct bw_source_provider *provider;bw_source_observer_fn prior;void *opaque;};
 static void observe(void *opaque,const struct bw_source_progress *progress) {

@@ -7,6 +7,7 @@
 #include "reader_runtime.h"
 #include "native_game_uninstall.h"
 #include "../streamreader/share_config.h"
+#include "../streamreader/bw_stat.h"
 #define BW_NATIVE_COVER_LIMIT (16u*1024u*1024u)
 struct bw_native_cover {uint8_t *bytes;size_t size;};
 /* Public-safe discovery diagnostics only. Never retain a config, account,
@@ -34,7 +35,7 @@ struct bw_native_prepare_selection {
      * a folder snapshot, byte-verification flag or publication capability. */
     struct bw_provider_binding identity;
     struct bw_source_info boot,param;
-    struct smb2_stat_64 image;
+    struct bw_stat image;
     uint64_t logical_boot_size;
     int container_kind;
     char run[33];

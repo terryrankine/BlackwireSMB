@@ -15,8 +15,12 @@ int bw_provider_binding_init(struct bw_provider_binding *,const struct bw_share_
  * clears both outputs on failure. Does not connect or grant source authority. */
 int bw_provider_binding_select(struct bw_provider_binding *,struct bw_share_config *,
     const char *source,const char *title,enum bw_provider_kind,const char *game);
+struct bw_stat;
 struct smb2_stat_64;
 /* Canonical immutable image-generation seal, shared by preparation and launch.
  * Hashing metadata does not itself verify an image or grant source authority. */
+void bw_provider_image_generation_stat(const struct bw_provider_binding *,const struct bw_stat *,const uint8_t map_sha256[32],uint8_t out[32]);
+/* SMB form for reader/preload/source.c until the reader has a transport table.
+ * Converts verbatim, so both forms produce the same seal. */
 void bw_provider_image_generation(const struct bw_provider_binding *,const struct smb2_stat_64 *,const uint8_t map_sha256[32],uint8_t out[32]);
 #endif

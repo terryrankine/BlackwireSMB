@@ -78,7 +78,7 @@ int main(int argc,char **argv){C(argc==7);int folder=!strcmp(argv[1],"folder"),v
     struct bw_provider_binding binding;C(!bw_provider_binding_init(&binding,&config,folder?"fixture":"fixture.ffpfsc","PPSA99001",folder?BW_PROVIDER_FOLDER:BW_PROVIDER_CONTAINER));
     struct bw_container_smb *image=NULL;struct image_source input={.context=&context};
     if(!folder){load_image(&input,argv[3]);image=calloc(1,sizeof *image);C(image);strcpy(image->path,"fixture.ffpfsc");image->handle=(struct smb2fh *)image;
-        image->admitted.smb2_ino=7;image->admitted.smb2_size=input.size;image->admitted.smb2_mtime=1700000000;
+        image->admitted.ino=7;image->admitted.size=input.size;image->admitted.mtime=1700000000;
         struct bw_container_ops ops={image_read,image_generation};int opened=bw_container_open(&image->container,&ops,&input,input.size);
         if(opened){C(!valid);printf("{\"passed\":true,\"checks\":%u,\"refusedDuringParserOpen\":true}\n",checks);free(image);free(input.bytes);return 0;}
         struct bw_source_namespace_view observed;int observed_result=bw_source_namespace_container(&image->container,&observed);

@@ -3,6 +3,7 @@
 #include "source_smb.h"
 #include "source_identity.h"
 #include "../streamreader/container_smb.h"
+#include "../streamreader/bw_stat.h"
 #define BW_CATALOG_MAX_ITEMS 4096u
 #define BW_CATALOG_MAX_COLLECTIONS 512u
 #define BW_CATALOG_MAX_DEPTH 3u
@@ -21,7 +22,7 @@ struct bw_catalog_item {
     uint64_t container_bytes;
     /* Genuine outer SMB metadata, independent of folder boot/param metadata.
      * Logical file sizes do not become fabricated per-file SMB timestamps. */
-    struct smb2_stat_64 image;
+    struct bw_stat image;
     uint8_t image_sha256[32];
     uint64_t logical_boot_size,logical_icon_size;
     int container_kind,container_error;
@@ -64,8 +65,8 @@ int bw_source_catalog_scan(struct bw_source_smb *,struct bw_source_catalog *);
 int bw_source_catalog_container_cover(struct bw_source_smb *,const struct bw_catalog_item *,size_t,void **,size_t *);
 void bw_source_catalog_destroy(struct bw_source_catalog *);
 int bw_source_catalog_json(const struct bw_source_catalog *,char **,size_t *);
-int bw_source_catalog_image_same(const struct smb2_stat_64 *,const struct smb2_stat_64 *);
-void bw_source_catalog_image_hash(const struct smb2_stat_64 *,uint8_t[32]);
+int bw_source_catalog_image_same(const struct bw_stat *,const struct bw_stat *);
+void bw_source_catalog_image_hash(const struct bw_stat *,uint8_t[32]);
 int bw_source_catalog_available(const struct bw_catalog_item *);
 int bw_source_catalog_binding(struct bw_provider_binding *,const struct bw_share_config *,const struct bw_catalog_item *);
 enum bw_provider_kind bw_source_catalog_kind(const struct bw_catalog_item *);

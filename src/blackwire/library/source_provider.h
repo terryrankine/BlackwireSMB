@@ -4,6 +4,7 @@
 #include "compressed_data.h"
 
 #include "source_identity.h"
+#include "../streamreader/bw_stat.h"
 #define BW_PROVIDER_MAX_LOCAL_BYTES (5ULL * 1024u * 1024u * 1024u)
 /* Borrowed immutable view backed by a typed live provider, never a fabricated
  * folder snapshot. The folder generation is its real sealed snapshot digest;
@@ -27,7 +28,7 @@ struct bw_source_provider {
     struct bw_container_ops image_ops;
     void *image_source;
     struct bw_container_smb *borrowed_image;
-    struct smb2_stat_64 image_generation;
+    struct bw_stat image_generation;
     uint64_t budget;
     int (*current)(void *);
     void *opaque;
