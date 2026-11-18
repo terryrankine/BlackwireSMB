@@ -2,6 +2,7 @@
  * *at calls and checked index codec. It is not an independently linked TU. */
 #include "native_launch_admission.h"
 #include "source_param.h"
+#include "source_connect.h"
 #include "preload_source_ampr_internal.h"
 #include "preload_companions_internal.h"
 
@@ -390,12 +391,9 @@ int bw_native_launch_admission_source_connect(struct bw_native_launch_admission 
     struct bw_source_smb source={.deadline=deadline};uint8_t map[32],generation[32];int result=-1;
     if(bw_provider_binding_select(&identity,&connection,p->identity.binding.source,p->identity.binding.title,p->identity.kind,p->identity.binding.game)||
        !na_bound(&p->identity,&identity)||na_selected(p,selected)||na_current(p))goto done;
-    source.smb=smb2_init_context();if(!source.smb)goto done;
     double remaining=deadline-cp_now();if(remaining<=0)goto done;
     unsigned timeout=remaining>=10?10u:(unsigned)remaining+1u;
-    smb2_set_timeout(source.smb,(int)timeout);smb2_set_user(source.smb,connection.user);smb2_set_password(source.smb,connection.password);
-    smb2_set_sign(source.smb,1);smb2_set_security_mode(source.smb,SMB2_NEGOTIATE_SIGNING_REQUIRED);
-    if(smb2_connect_share(source.smb,connection.server,connection.share,connection.user)<0||na_current(p)||
+    if(bw_source_connect_smb(&connection,BW_TP_PROFILE_ADMISSION,(int)timeout,&source.smb,NULL)||na_current(p)||
        bw_native_launch_admission_source(p,&connection,&source,selected,map,generation,&failure)||na_current(p))goto done;
     result=0;
 done:

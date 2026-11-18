@@ -13,6 +13,7 @@ LIB, STREAM = SRC / 'library', SRC / 'streamreader'
 # JSON object with its check count on its last line.
 UNITS = {
     'tp_error': (HERE / 'tp_error_test.c', [], []),
+    'connect': (HERE / 'connect_test.c', [], []),
 }
 
 

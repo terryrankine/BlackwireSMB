@@ -17,7 +17,7 @@ def main():
  pin=lambda path:hashlib.sha256(path.read_bytes()).hexdigest()
  before={str(path):pin(path) for path in tracked};source=(lib/'native_backend.c').read_text()
  start=source.index('struct bw_native_backend {');end=source.index('\n};',start)+3
- header='#define _DEFAULT_SOURCE 1\n#include "native_backend.h"\n#include "native_json.h"\n#include "../streamreader/copy_sha256.h"\n#include "../streamreader/bw_tp_error.h"\n#include <errno.h>\n#include <limits.h>\n#include <pthread.h>\n#include <time.h>\n#include <smb2/smb2.h>\n#include <smb2/libsmb2.h>\n'
+ header='#define _DEFAULT_SOURCE 1\n#include "native_backend.h"\n#include "native_json.h"\n#include "../streamreader/copy_sha256.h"\n#include "../streamreader/bw_tp_error.h"\n#include "source_connect.h"\n#include <errno.h>\n#include <limits.h>\n#include <pthread.h>\n#include <time.h>\n#include <smb2/smb2.h>\n#include <smb2/libsmb2.h>\n'
  header+=source[start:end]+'\n'+'\n'.join(l for l in source.splitlines() if l.startswith('enum {'))+'\n'
  header+='static void bw_send_log(const char *,const char *,...);\nstatic int removal_cache(struct bw_native_backend *,struct bw_native_library *,const struct bw_share_config *);\n'
  header+=function((lib/'native_setup.c').read_text(),'int bw_native_setup_config_valid(')+'\n'

@@ -7,6 +7,7 @@
 #include <math.h>
 #include "launch_timing.h"
 #include "native_projection_handoff.h"
+#include "source_connect.h"
 
 struct home_worker {
     struct bw_native_backend *backend;
@@ -66,12 +67,9 @@ static int home_startup_control(struct home_worker *h,const struct bw_reader_sel
 static int home_source(struct home_worker *h,const struct bw_share_config *config,const struct bw_reader_selection *selected){
     struct bw_source_smb source={.deadline=h->deadline};uint8_t map[32],generation[32];const char *error=NULL;int result=-1;
     if(home_lease(h))return -1;
-    source.smb=smb2_init_context();if(!source.smb)return -1;
-    double remain=h->deadline-now();if(remain<=0)goto done;
+    double remain=h->deadline-now();if(remain<=0)return -1;
     unsigned timeout=(unsigned)ceil(remain);if(timeout>10)timeout=10;if(!timeout)timeout=1;
-    smb2_set_timeout(source.smb,(int)timeout);smb2_set_user(source.smb,config->user);smb2_set_password(source.smb,config->password);
-    smb2_set_sign(source.smb,1);smb2_set_security_mode(source.smb,SMB2_NEGOTIATE_SIGNING_REQUIRED);
-    if(smb2_connect_share(source.smb,config->server,config->share,config->user)<0||home_lease(h)||
+    if(bw_source_connect_smb(config,BW_TP_PROFILE_ADMISSION,(int)timeout,&source.smb,NULL)||home_lease(h)||
        bw_native_launch_admission_source(h->startup,config,&source,selected,map,generation,&error)||memcmp(map,h->claim.map_sha256,32)||home_lease(h))goto done;
     result=0;
 done:

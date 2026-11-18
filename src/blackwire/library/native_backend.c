@@ -27,6 +27,7 @@
 #endif
 #include "../streamreader/copy_sha256.h"
 #include "../streamreader/bw_tp_error.h"
+#include "source_connect.h"
 #include <errno.h>
 #include <limits.h>
 #include <sys/stat.h>
@@ -261,9 +262,7 @@ static int prepare(void *opaque,struct bw_share_config *config,const struct bw_n
     struct bw_provider_binding resolved={0};
     if(bw_provider_binding_select(&resolved,config,selection->identity.binding.source,selection->identity.binding.title,
         selection->identity.kind,selection->identity.binding.game)||memcmp(&resolved,&selection->identity,sizeof resolved))goto done;
-    source.smb=smb2_init_context();if(!source.smb)goto done;
-    smb2_set_timeout(source.smb,10);smb2_set_sign(source.smb,1);smb2_set_security_mode(source.smb,SMB2_NEGOTIATE_SIGNING_ENABLED|SMB2_NEGOTIATE_SIGNING_REQUIRED);smb2_set_user(source.smb,config->user);smb2_set_password(source.smb,config->password);
-    int connected=smb2_connect_share(source.smb,config->server,config->share,config->user);bw_share_clear(config);if(connected<0||current(guard))goto done;
+    int connected=bw_source_connect_smb(config,BW_TP_PROFILE_SCAN,10,&source.smb,NULL);bw_share_clear(config);if(connected<0||current(guard))goto done;
     if(selection->identity.kind==BW_PROVIDER_CONTAINER){
         image=calloc(1,sizeof *image);if(!image)goto done;
         if(bw_container_smb_open_owned_metadata(image,&source.smb,selection->identity.binding.source))goto done;
@@ -798,9 +797,9 @@ static int discover_one(void *opaque,struct bw_share_config *share,struct bw_nat
     (void)opaque;struct bw_source_smb source={0};double start=now();if(start<0)return -1;source.deadline=start+180;
     const char *stage="smb-connect";
     char share_name[128];memcpy(share_name,share->share,sizeof share_name);
-    source.smb=smb2_init_context();if(!source.smb){check_failure(&out->failure,share_name,stage,-1,0,"smb_context_allocation_failed",NULL);bw_share_clear(share);return -1;}
-    smb2_set_timeout(source.smb,10);smb2_set_sign(source.smb,1);smb2_set_security_mode(source.smb,SMB2_NEGOTIATE_SIGNING_ENABLED|SMB2_NEGOTIATE_SIGNING_REQUIRED);smb2_set_user(source.smb,share->user);smb2_set_password(source.smb,share->password);
-    int result=smb2_connect_share(source.smb,share->server,share->share,share->user);bw_share_clear(share);if(result<0)goto done;
+    struct bw_tp_status connect;int result=bw_source_connect_smb(share,BW_TP_PROFILE_SCAN,10,&source.smb,&connect);
+    if(!source.smb){check_failure(&out->failure,share_name,stage,-1,0,"smb_context_allocation_failed",NULL);bw_share_clear(share);return -1;}
+    bw_share_clear(share);if(result<0){result=connect.result;goto done;}
     stage="catalog";
     result=bw_source_catalog_scan(&source,&out->catalog);if(result)goto done;
     if(out->catalog.count){out->covers=calloc(out->catalog.count,sizeof *out->covers);if(!out->covers){result=-1;goto done;}out->cover_count=out->catalog.count;}
