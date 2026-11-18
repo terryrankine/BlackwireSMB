@@ -1,12 +1,29 @@
 #!/usr/bin/env python3
-"""Offline golden vectors for the binding, image-generation and snapshot seals."""
+"""Offline golden vectors for the binding, image-generation and snapshot seals.
+
+Default: build identity_golden_test.c against this tree and require EXPECTED.
+--capture-main TREE: build the same test file against a main checkout with
+-DBW_GOLDEN_MAIN_API and require EXPECTED there too. This reproduces the
+capture:
+
+    git worktree add ../bw-main 193d910
+    python3 tests/sources/check_identity_golden.py --output build/golden-main --capture-main ../bw-main
+"""
 from pathlib import Path
 import argparse, hashlib, json, os, subprocess, sys
 
 ROOT = Path(__file__).resolve().parents[2]
 # Captured from origin/main 193d910, before struct bw_stat replaced
-# struct smb2_stat_64 in the identity code. A change here unbinds every
-# installed game, so these values are never regenerated from new code.
+# struct smb2_stat_64 in the identity code. --capture-main reproduces them: same
+# test file, same inputs, main's sources and main's API. Under BW_GOLDEN_MAIN_API the test
+# passes &raw straight to the seals where this tree first converts it with
+# bw_stat_from_smb2, and calls bw_provider_image_generation for the _stat form.
+# A change here unbinds every installed game, so these values are never
+# regenerated from new code.
+# Code this branch changes: catalogImage* (bw_source_catalog_image_hash) and
+# imageGeneration* (bw_provider_image_generation_stat and its SMB wrapper).
+# Untouched control vectors: binding*, game* (source_binding.c,
+# bw_provider_binding_init) and snapshot* (source_snapshot.c).
 EXPECTED = {
     'bindingFolder': '0c2e6534e6a41039f24c8437dd26f36970caa0e3fd1700265b8af217a9c84e46',
     'bindingContainer': '32cc582f19f8615090f721dc17e784b4f515fb1e79eaf5822eeb7d8f34935d69',
@@ -29,27 +46,38 @@ EXPECTED = {
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--capture-main', type=Path, metavar='TREE',
+                        help='build against a pre-bw_stat main checkout instead of this tree')
     args = parser.parse_args()
     if sys.platform != 'linux':
         raise ValueError('Use Linux/WSL Python and clang-18')
     out = args.output.resolve()
     if not out.is_relative_to(ROOT / 'build') or out.exists():
         raise ValueError('Use a fresh build output directory')
+    tree = (args.capture_main or ROOT).resolve()
+    if args.capture_main:
+        # The main API build cannot see bw_stat. A tree that has it is not main.
+        if not (tree / 'src/blackwire/library/source_identity.c').is_file():
+            raise ValueError('Not a Blackwire tree: ' + str(tree))
+        if (tree / 'src/blackwire/streamreader/bw_stat.h').exists():
+            raise ValueError('Capture tree already has bw_stat.h; use a checkout of 193d910')
     out.mkdir(parents=True)
-    lib, stream = ROOT / 'src/blackwire/library', ROOT / 'src/blackwire/streamreader'
+    lib, stream = tree / 'src/blackwire/library', tree / 'src/blackwire/streamreader'
     sources = [Path(__file__).with_name('identity_golden_test.c')]
     sources += [lib / name for name in ('source_catalog.c', 'source_identity.c', 'source_binding.c',
                                        'source_profile.c', 'source_snapshot.c', 'source_plan.c')]
     sources += [stream / name for name in ('share_config.c', 'manifest.c')]
-    pinned = sources + sorted((ROOT / 'src/blackwire').rglob('*.h'))
+    pinned = sources + sorted((tree / 'src/blackwire').rglob('*.h'))
     def pins():
-        return {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in pinned}
+        return {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in pinned}
     before = pins()
     flags = ['clang-18', '-std=gnu11', '-O1', '-g', '-Wall', '-Wextra', '-Werror',
              '-Wno-misleading-indentation', '-Wno-unused-function', '-D_DEFAULT_SOURCE=1',
              '-ffunction-sections', '-fdata-sections', '-fsanitize=address,undefined',
              '-fno-sanitize-recover=all', '-fno-omit-frame-pointer',
-             '-I', ROOT / 'src/blackwire', '-I', ROOT / 'vendor/libsmb2/include']
+             '-I', tree / 'src/blackwire', '-I', tree / 'vendor/libsmb2/include']
+    if args.capture_main:
+        flags.append('-DBW_GOLDEN_MAIN_API=1')
     binary = out / 'identity-golden-test'
     commands = []
     def run(label, argv):
@@ -68,6 +96,7 @@ def main():
     if before != pins():
         raise ValueError('Source changed during test')
     proof = {'passed': not differ and observed.get('checks', 0) > 0, 'vectors': len(EXPECTED),
+             'mode': 'capture-main' if args.capture_main else 'tree', 'tree': str(tree),
              'differ': differ, 'observed': observed, 'expected': EXPECTED,
              'sanitizers': ['address', 'undefined'], 'consoleContacted': False, 'smbConnectionsMade': False}
     (out / 'proof.json').write_text(json.dumps(proof, indent=2) + '\n')

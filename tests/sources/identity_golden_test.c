@@ -5,7 +5,6 @@
 #include "library/source_catalog.h"
 #include "library/source_identity.h"
 #include "library/source_snapshot.h"
-#include "streamreader/bw_stat_smb2.h"
 #include <smb2/smb2.h>
 #include <smb2/libsmb2.h>
 #include <stdio.h>
@@ -14,10 +13,19 @@
 
 static unsigned checks;
 #define C(x) do { checks++;if(!(x)){fprintf(stderr,"identity golden failure line %d: %s\n",__LINE__,#x);exit(1);} } while(0)
+#ifdef BW_GOLDEN_MAIN_API
+/* Capture build (check_identity_golden.py --capture-main). Main 193d910 has
+ * no bw_stat: its seals take struct smb2_stat_64 and the generation seal has
+ * no _stat form. Only IMAGE() and that name differ; the inputs are the same. */
+#define IMAGE(raw) (&(raw))
+#define bw_provider_image_generation_stat bw_provider_image_generation
+#else
+#include "streamreader/bw_stat_smb2.h"
 /* The vectors stay in libsmb2 form so the boundary conversion is under test. */
 static struct bw_stat converted[4];static unsigned next;
 static const struct bw_stat *image(const struct smb2_stat_64 *raw){struct bw_stat *p=&converted[next++%4];bw_stat_from_smb2(p,raw);return p;}
 #define IMAGE(raw) image(&(raw))
+#endif
 static void hex(const char *name,const uint8_t digest[32],int last){
     printf("\"%s\":\"",name);for(unsigned i=0;i<32;i++)printf("%02x",digest[i]);printf("\"%s",last?"":",");
 }
@@ -30,6 +38,7 @@ static const struct smb2_stat_64 stats[]={
      UINT64_C(0x00000001ffffffff),UINT64_C(999999000),UINT64_C(0x0000000200000000),1000,0,0},
     {SMB2_TYPE_LINK,0,1,UINT64_C(0xffffffffffffffff),9,9,0,0,UINT64_MAX,UINT64_MAX,9,9}
 };
+#ifndef BW_GOLDEN_MAIN_API
 /* Each compared field alone must break same-file, in both argument orders and
  * through the catalog wrapper. A flip also moves the catalog seal, so no
  * compared field escapes the hash either. */
@@ -67,6 +76,7 @@ static void same_file_fields(void){
         bw_source_catalog_image_hash(&b,got);C(!memcmp(want,got,32));
     }
 }
+#endif
 int main(void){
     struct bw_share_config config={0};
     strcpy(config.server,"nas.example");strcpy(config.share,"Games");strcpy(config.user,"neutral");strcpy(config.password,"secret");
@@ -110,7 +120,9 @@ int main(void){
     C(!bw_source_snapshot_finish(&plain)&&!bw_source_snapshot_validate(&plain));
     hex("snapshotBound",bound.sha256,0);hex("snapshotPlain",plain.sha256,0);
     bw_source_snapshot_destroy(&bound);bw_source_snapshot_destroy(&plain);
+#ifndef BW_GOLDEN_MAIN_API
     same_file_fields();
+#endif
     printf("\"checks\":%u}\n",checks);
     return 0;
 }
