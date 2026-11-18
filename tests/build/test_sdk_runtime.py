@@ -98,7 +98,7 @@ def main():
     native.write_text("int development_change;\n")
     dep_path = path / "metadata/dependencies.json"
     data = json.loads(dep_path.read_text())
-    for part in ("ampr", "libsmb2", "sqlite"):
+    for part in ("ampr", "libsmb2", "libnfs", "sqlite"):
         data[part]["files"] = {}
     save(dep_path, data)
     save(path / "tools/build/app-recipe.json", {"commands": []})

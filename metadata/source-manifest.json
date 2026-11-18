@@ -1338,8 +1338,8 @@
       "sha256": "5d570f886dd5b2e9cc3ac1ed291eddb12422df93b384cd219b63fbd859a8b837"
     },
     "tools/build/common.py": {
-      "bytes": 4240,
-      "sha256": "27c6dc35f3db2eaff68a53cf9e55b2e9a6991739e40ea64d5b138025558cb58a"
+      "bytes": 4250,
+      "sha256": "cd8992567060370df6d2510d70b2a2f3b4589b159c912ef8b6bb4d5e1e79dd13"
     },
     "tools/build/deps.py": {
       "bytes": 1743,
@@ -1404,8 +1404,8 @@
       "sha256": "01f5838f2c5ce94afc350733854d6a999a6e96ce92523895db1d27e4c761e25b"
     },
     "tests/build/test_sdk_runtime.py": {
-      "bytes": 12292,
-      "sha256": "011a9240f8993ad2eb356832706d1d7c2821a6bcbc4457e192e546f816862696"
+      "bytes": 12302,
+      "sha256": "02124d58a32ccaaee20f5501f1be441e90e817531622cd8c934b73b84582cb3b"
     },
     "tests/build/test_standalone_startup_trace.c": {
       "bytes": 11024,

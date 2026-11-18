@@ -74,7 +74,7 @@ def verify_inputs(root, allow_source_changes=False):
     changed = []
     groups = [(root, source["nativeSource"], True)]
     groups += [(root / "vendor" / name, deps[name]["files"], False)
-               for name in ("ampr", "libsmb2", "sqlite")]
+               for name in ("ampr", "libsmb2", "libnfs", "sqlite")]
     groups.append((root / "vendor/sdk-runtime", deps["sdk"]["linkedRuntimeSource"], False))
     count = 0
     for base, rows, editable in groups:

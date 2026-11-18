@@ -1313,6 +1313,1202 @@
       }
     }
   },
+  "libnfs": {
+    "url": "https://github.com/sahlberg/libnfs",
+    "version": "8.0.1",
+    "tag": "libnfs-8.0.1",
+    "commit": "504caa8c1c249da799b4a3bf88419f10b650e75b",
+    "upstreamCommitRecorded": true,
+    "excludedPaths": {
+      "examples/": "GPL-3.0-or-later example programs; not vendored and not built."
+    },
+    "files": {
+      ".github/workflows/build.yml": {
+        "bytes": 5364,
+        "sha256": "4288237e1d4b7b19c4bf27e145070ba5a9bb452611f9aa7021ed3260a0b0b930"
+      },
+      ".github/workflows/codeql.yml": {
+        "bytes": 834,
+        "sha256": "92428fe972535d68f10691d7af13a244f61bfab3fde930a0a64d0572ef28f771"
+      },
+      ".gitignore": {
+        "bytes": 1028,
+        "sha256": "db0a1ae693d09ff81fe8f192a99a28a7a0f186913f82370376b495f9406ce651"
+      },
+      "aros/aros_compat.c": {
+        "bytes": 4179,
+        "sha256": "c2376158e723812cde9826bca46ef0ee3f6ab62f6574e1458673c1973f36cf82"
+      },
+      "aros/aros_compat.h": {
+        "bytes": 2091,
+        "sha256": "d0a6e21c28d99f7aad8a0cd340038af8bbecfe01c8fa71a68e79ab9d0fd7a9fc"
+      },
+      "aros/CMakeLists.txt": {
+        "bytes": 78,
+        "sha256": "daf2fe880b705b77fd880ae8e0d8f785dd8fcd96c6d6839055788d3d7e557181"
+      },
+      "aros/Makefile.AROS": {
+        "bytes": 1503,
+        "sha256": "f18fb8a4e6e56755512963b32c7257cfae0662d2a49d4ad0ea6b8396ce2a1ec5"
+      },
+      "bootstrap": {
+        "bytes": 34,
+        "sha256": "5e0ed4ae09f44adaa97d2f622b13a3a2468d15a2b9053ad868ec8cb2356dd23f"
+      },
+      "CHANGELOG": {
+        "bytes": 5292,
+        "sha256": "68606c16cdf57f6979760f91b2ceb0d6442a5a6fc55d73e4507773b667ea3a99"
+      },
+      "cmake/config.h.cmake": {
+        "bytes": 4427,
+        "sha256": "dea97eeba78a3ab92a0c47a2771f34db3596d385ae485ce852715b8dd2b318ea"
+      },
+      "cmake/ConfigureChecks.cmake": {
+        "bytes": 6571,
+        "sha256": "b117af5f1d78ef235d0ca653415c47dac7e54fda407320a0023ba44df984c524"
+      },
+      "cmake/FindNFS.cmake": {
+        "bytes": 970,
+        "sha256": "f9458f0c93af07eca556c45d43b33c30f0835a64f66445d6d9d1c123bd602330"
+      },
+      "cmake/GNUInstallDirs.cmake": {
+        "bytes": 17882,
+        "sha256": "cae7cdc2c75a799362f185413727ae27c35c10093e99a7a092d2a671c05f0ac0"
+      },
+      "cmake/libnfs.pc.cmake": {
+        "bytes": 364,
+        "sha256": "afcf7469d71c50f539998bac826b1fcb01c6e9209622fa6e7483cd1bb97d27e7"
+      },
+      "cmake/Macros.cmake": {
+        "bytes": 911,
+        "sha256": "9eb30b9b376c4cfb4a668159955316589467dd98560470d590d0f448e52c203e"
+      },
+      "CMakeLists.txt": {
+        "bytes": 10454,
+        "sha256": "12a96372f6ba889c271dd796cb3cfa721d21eaa4178714fe2146c25c2e1158fd"
+      },
+      "configure.ac": {
+        "bytes": 12976,
+        "sha256": "7e3802fbd423c56d9413ba45c5864828c68739d37b4544eb9c4eda2f90928a18"
+      },
+      "COPYING": {
+        "bytes": 1601,
+        "sha256": "edd960c0142b8ada98b43b6396b78f4e557b0bc70ac601a51e397ad04070e2c5"
+      },
+      "doc/CMakeLists.txt": {
+        "bytes": 1531,
+        "sha256": "10c6db1d057f3c031ef3ad966e8c122e7ba8d86801013c84b3b16ad18f119e07"
+      },
+      "doc/Makefile.am": {
+        "bytes": 700,
+        "sha256": "ca35462b34e7ac73c84d0b661d0c4a8cef4da70404497a593f8f688401288888"
+      },
+      "doc/nfs-cat.1": {
+        "bytes": 1698,
+        "sha256": "065a9626b1fb551871411c95a29f54b0fd94c993442a234f0508fc2d705965f6"
+      },
+      "doc/nfs-cat.1.xml": {
+        "bytes": 958,
+        "sha256": "384b74515aa87d50872ed7a121c837c5843123b705e462f25b5ffb665e9aab0f"
+      },
+      "doc/nfs-cp.1": {
+        "bytes": 2513,
+        "sha256": "714ad518ac51fbc34203de4b2bd5c2cb194fff8306e342eafcd9e2ca8bb77924"
+      },
+      "doc/nfs-cp.1.xml": {
+        "bytes": 1814,
+        "sha256": "5929b0fe008ffe9132f392cb9badf011154423e377841b85e82879f6ba89dc77"
+      },
+      "doc/nfs-ls.1": {
+        "bytes": 3075,
+        "sha256": "de890aff19af7a9a6d01652600b0178fd2557e2b52708c1695d2eac6b01e1a58"
+      },
+      "doc/nfs-ls.1.xml": {
+        "bytes": 3552,
+        "sha256": "80dd0bee13f58af2088b7c6b677718ed3434c4f74fc4455c8f6a8471fd46d23b"
+      },
+      "fuzzing/libnfs_reply_fuzzer.c": {
+        "bytes": 11062,
+        "sha256": "a7f619239dbbeafa9918134c2c04280757556c0c6bfb9fad888c2e387dbfffbd"
+      },
+      "fuzzing/README.md": {
+        "bytes": 1227,
+        "sha256": "607a3384370a49298c95490e12b4ef5210e4767a3c9c6bfd4648759302e30855"
+      },
+      "fuzzing/seeds/seed_000_0": {
+        "bytes": 5,
+        "sha256": "8855508aade16ec573d21e6a485dfd0a7624085c1a14b5ecdd6485de0c6839a4"
+      },
+      "fuzzing/seeds/seed_003_0": {
+        "bytes": 5,
+        "sha256": "a665e6b115dd56fd3e0c89be631e6eda8e9666b822e0bd7026bf0822c4bbc68f"
+      },
+      "fuzzing/seeds/seed_003_1": {
+        "bytes": 5,
+        "sha256": "87c0fe227f796531fddbe6c401b492cb492b1af080b51317edaa080991b0a186"
+      },
+      "fuzzing/seeds/seed_018_0": {
+        "bytes": 5,
+        "sha256": "5b6913fb226d74222e31ba1e9be64274eb3dba34a83c4d252608711a18ee6fcf"
+      },
+      "fuzzing/seeds/seed_021_0": {
+        "bytes": 5,
+        "sha256": "3a3080c473a3e2e5bb6c8857bf5c27606e8ee489a9bebc67afffc0b454171ff9"
+      },
+      "fuzzing/seeds/seed_036_0": {
+        "bytes": 5,
+        "sha256": "220bc40ffb6c4871506513f80bc4e89a1ae5c22b3dde6ef57f823a97c5e3a34a"
+      },
+      "fuzzing/seeds/seed_039_0": {
+        "bytes": 5,
+        "sha256": "01cff33f4cc34ff688db09b33410fa14de3f7b1a858893fe631abe4bfdc7c222"
+      },
+      "fuzzing/seeds/seed_048_0": {
+        "bytes": 5,
+        "sha256": "98daa68775d349d38e8af599a6feb67fc597d049d04d8cbde1f0a49bb85d89db"
+      },
+      "fuzzing/seeds/seed_054_0": {
+        "bytes": 5,
+        "sha256": "dd0e3fb42107cd97644876779ac34f2954e5ce23ca847ab5fc74896199cb5110"
+      },
+      "fuzzing/seeds/seed_060_0": {
+        "bytes": 5,
+        "sha256": "81c8e615f8d667ea6e481e4271924578f26b5f9fd0f4ee3e99b6913eb581f8e3"
+      },
+      "fuzzing/seeds/seed_063_0": {
+        "bytes": 5,
+        "sha256": "708f0585f4b9bf3a2bf06b9b49c9654573dd4c5e8df4bb40603d0d57a9168fde"
+      },
+      "fuzzing/seeds/seed_072_0": {
+        "bytes": 5,
+        "sha256": "98ebe0ee4361f30fe143bbe2dcaa521a48d6be5a5b22aada8c65a4f08330bf0a"
+      },
+      "fuzzing/seeds/seed_087_0": {
+        "bytes": 5,
+        "sha256": "664d6a30522161b9dbda775c9a3fc1d0452ec46dbca68569909f68da51e0a264"
+      },
+      "fuzzing/seeds/seed_150_0": {
+        "bytes": 32,
+        "sha256": "f90c5bd09b9c0936b720ca01efe58fe171d6ae4a08be9db1c0c07b65a727c044"
+      },
+      "fuzzing/seeds/seed_150_1": {
+        "bytes": 35,
+        "sha256": "487c878ed2db4abbff4956e926f6e50bafe8a35ca40e5e39bfbd838251a81f68"
+      },
+      "include/libnfs-multithreading.h": {
+        "bytes": 2081,
+        "sha256": "46a5a808c6606ecca3a7e31dde71703116b2b5d067a04b932ffd3daa1548b0a1"
+      },
+      "include/libnfs-private.h": {
+        "bytes": 53119,
+        "sha256": "f37ccfc89620dfa39af6d64db294eaa401a1e86e82519eb06f5af74054f61284"
+      },
+      "include/Makefile.am": {
+        "bytes": 443,
+        "sha256": "9b1937f84b39917815367a40c8b139be4bae596f679b5b4240dbd49d4f0aa075"
+      },
+      "include/nfsc/libnfs-raw.h": {
+        "bytes": 115194,
+        "sha256": "a7519e11cf5cdfdcf7d619e1e9a2df7e7060d31491d52210acdc7c1faac3febc"
+      },
+      "include/nfsc/libnfs-zdr.h": {
+        "bytes": 7857,
+        "sha256": "61e8c4a18ae674fc16baecdd42f531c5f0bcd420000c5970ff6f98f5668d779f"
+      },
+      "include/nfsc/libnfs.h": {
+        "bytes": 72000,
+        "sha256": "a3f0d615716edcc5aaaa38bd6f83d1eebe044cc7bd822b02865f779b5392fda7"
+      },
+      "include/slist.h": {
+        "bytes": 1666,
+        "sha256": "d25d214c813db3e54336a4f124db6ded85ee12aa85de0983026848a775731add"
+      },
+      "include/win32/win32_compat.h": {
+        "bytes": 4965,
+        "sha256": "a751a20819959c5190ce095f78ba736cf9a2361d9bd202eea0bcde5c846fac23"
+      },
+      "INSTALL": {
+        "bytes": 477,
+        "sha256": "2dce3f5ac8a3cc71195923ddc9e44562f44d1f53ea7d1834137838c0db242193"
+      },
+      "lib/CMakeLists.txt": {
+        "bytes": 1210,
+        "sha256": "68335f7f19ac647f7fc02de75ae90065ca0ef77dc5bbea80cafc8caacb15f472"
+      },
+      "lib/init.c": {
+        "bytes": 24033,
+        "sha256": "39a38f46b33f3b76342c3033652942d2c08ce9006b8c40b63c5d08c2367de829"
+      },
+      "lib/krb5-wrapper.c": {
+        "bytes": 10585,
+        "sha256": "e75327006ec4eb3ee5c3893d63ac06c546c1c8b5e7e8648921187ff5f82e4e99"
+      },
+      "lib/krb5-wrapper.h": {
+        "bytes": 2322,
+        "sha256": "07ae7b0cd7934256162c6a92cd0f610250fccaa84ef6740b6a966fdd1101be4b"
+      },
+      "lib/libnfs-sync.c": {
+        "bytes": 76278,
+        "sha256": "2d2eb768e151aca5ff0108423f42fc58c7f1f05cb7ef776baf6a9d5c60b1567c"
+      },
+      "lib/libnfs-win32.def": {
+        "bytes": 4800,
+        "sha256": "175fefd3aa9a8e4d350f105ed4eb58f1b52076b58491cefc508edfde6b54202c"
+      },
+      "lib/libnfs-zdr.c": {
+        "bytes": 21694,
+        "sha256": "4461b5ed7b9a72d96e5326accbfd84f85032b230139eeb0e404b8cc85715ee5d"
+      },
+      "lib/libnfs.c": {
+        "bytes": 97075,
+        "sha256": "21f9f21779a7266480ecc1fa1ca000324a121b8a23fd4bf25c3412303a7863ce"
+      },
+      "lib/Makefile.am": {
+        "bytes": 1264,
+        "sha256": "7da9a2dd03903c06bfffdfdcf43f0fdf7643447b938b58ad96b2bee679f58ba2"
+      },
+      "lib/multithreading.c": {
+        "bytes": 12679,
+        "sha256": "8d738c1aabb00fb4948a5c2ecde733133691ee9edcfc8178469f840f96dfb7c9"
+      },
+      "lib/nfs_v3.c": {
+        "bytes": 153550,
+        "sha256": "b701dd0f47ca134b9d9319962460ea100173f990607f3ac84635b09a3b05f2dc"
+      },
+      "lib/nfs_v4.c": {
+        "bytes": 212232,
+        "sha256": "e3b8bfdaeef33f8d55ff29b0b37bab9f93d3e124ede26c5c49da56e00af3633b"
+      },
+      "lib/pdu.c": {
+        "bytes": 59854,
+        "sha256": "a1880dfa1ebff63352cf4bc6715ccc9c83d0f4c64fef87529d386bafe7021179"
+      },
+      "lib/socket.c": {
+        "bytes": 94082,
+        "sha256": "2368f6946fb3d290310872935c9fe74aba65354cd24cdefd6e240e04d19b0dee"
+      },
+      "libnfs.pc.in": {
+        "bytes": 335,
+        "sha256": "1bdd15756e181603b0c618c1d92c78a4e37c0a488bb9e1c51337e576adb549f7"
+      },
+      "LICENCE-BSD.txt": {
+        "bytes": 1457,
+        "sha256": "d9406ced95457941032aa11d04623b8ab71f2827a3395ebef137aec475be35b1"
+      },
+      "LICENCE-GPL-3.txt": {
+        "bytes": 35147,
+        "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+      },
+      "LICENCE-LGPL-2.1.txt": {
+        "bytes": 26530,
+        "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551"
+      },
+      "m4/.keep": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "Makefile.am": {
+        "bytes": 665,
+        "sha256": "5442a3cf18df81b633e3002a9be44fe17b0c4e4409ea0139a567688c03f44b11"
+      },
+      "mount/CMakeLists.txt": {
+        "bytes": 109,
+        "sha256": "5b6fd0b60f5286a9a3bd6ce9e5ab40eff9d91673f04bf0ca60e26c93adfac4b5"
+      },
+      "mount/libnfs-raw-mount.c": {
+        "bytes": 7886,
+        "sha256": "b1d09949907829c9d5639fec0175bf36e61020293ec7300e77c718e18578f333"
+      },
+      "mount/libnfs-raw-mount.h": {
+        "bytes": 10358,
+        "sha256": "68dfc528d968c851383a5202cccde69c9533d378794b36d3c9baa469681710ef"
+      },
+      "mount/Makefile.am": {
+        "bytes": 1178,
+        "sha256": "b0479bca36b55fe19c3ebbc9a0d74695db442e207df5e8328f0e8ffe47c0912d"
+      },
+      "mount/mount.c": {
+        "bytes": 8795,
+        "sha256": "db7752f0eec409e28714f4fdc7e91fee70cb84a851b156952a94538427704281"
+      },
+      "mount/mount.x": {
+        "bytes": 4841,
+        "sha256": "6f4f23f9560b3bf9d322cdac0975b8386325ff4912d6b5892a932ae1692984ce"
+      },
+      "nfs/CMakeLists.txt": {
+        "bytes": 122,
+        "sha256": "42b9b53b80730d823403d131aea682959c13c2040e32c00521802143cc7bc71b"
+      },
+      "nfs/libnfs-raw-nfs.c": {
+        "bytes": 58776,
+        "sha256": "aefdbdee6b93603064b5d70545fa9ee6790448b358b118fa9f598a5cf37964d6"
+      },
+      "nfs/libnfs-raw-nfs.h": {
+        "bytes": 54314,
+        "sha256": "e3af2b2008319a6d16e3628984ba6230bb799897fb37d474e5b8a6a910487f1d"
+      },
+      "nfs/libnfs-raw-nfs.h.extra": {
+        "bytes": 1381,
+        "sha256": "803ba98808e75d5aaf387263866694caed034b7bc17c96800d2dd824758ff868"
+      },
+      "nfs/Makefile.am": {
+        "bytes": 1283,
+        "sha256": "0cecfa14846caa6da2b5409032c20a4dfdd85f4ea66237485447acebb386a4d2"
+      },
+      "nfs/nfs.c": {
+        "bytes": 40808,
+        "sha256": "93a231cbd6f11be10d0d2bf8633c023e06e0adeeea8d21ccf9432b78dd086684"
+      },
+      "nfs/nfs.x": {
+        "bytes": 22216,
+        "sha256": "26c549763d842f12312c588fcf1701acc8025288cdb07fd467ecc5bfefdb27af"
+      },
+      "nfs/nfsacl.c": {
+        "bytes": 3016,
+        "sha256": "72e5451d28241131710f354cafe70e2bb60fbc090f0109bfc4da9b33e614eb13"
+      },
+      "nfs4/CMakeLists.txt": {
+        "bytes": 105,
+        "sha256": "fc1592284cf620ffc5adac994553e83adf174394c8f08e330ab60726dd5cc83e"
+      },
+      "nfs4/libnfs-raw-nfs4.c": {
+        "bytes": 96350,
+        "sha256": "e428ac0f9a1698bd428f98d261f87c3b2e6d3f92c5468384de236939c8453044"
+      },
+      "nfs4/libnfs-raw-nfs4.c.fragment": {
+        "bytes": 517,
+        "sha256": "4a7b5587b84d8ccc7eef89e4ffd9867f4a30284b9478e0baf070f985c7f6405b"
+      },
+      "nfs4/libnfs-raw-nfs4.h": {
+        "bytes": 97752,
+        "sha256": "9be6c3773d24ddecfcf5a8421ccb510df2fef1da3323bcd77ea7db689a53e6cd"
+      },
+      "nfs4/libnfs-raw-nfs4.h.extra": {
+        "bytes": 8281,
+        "sha256": "728cbd0f43e4cbf04de04dc3a0937638269f10e7f18c0b74d909bc211cda7461"
+      },
+      "nfs4/Makefile.am": {
+        "bytes": 1545,
+        "sha256": "f1624cbde5384629ba8fa98372fa793f225b1bb438da3dca8f6c4a0483b4364c"
+      },
+      "nfs4/nfs4.c": {
+        "bytes": 47572,
+        "sha256": "06b18fd553c5f9dae00c9ccd6669232293e73301eb207fcb903ddcc753ddf488"
+      },
+      "nfs4/nfs4.x": {
+        "bytes": 68407,
+        "sha256": "e2af4af36ccb496d2a4f102a3b99a25f9a05b4bfe59b17b9ba940b387827a6ee"
+      },
+      "nlm/CMakeLists.txt": {
+        "bytes": 101,
+        "sha256": "62898c9c711d32fb69dc4793723c36771cc3baa67142620d231eb7711313e27b"
+      },
+      "nlm/libnfs-raw-nlm.c": {
+        "bytes": 7273,
+        "sha256": "7ac625ed3ee806d770ef48decffee002048db41fc21eacc1134204b2ef45eb23"
+      },
+      "nlm/libnfs-raw-nlm.h": {
+        "bytes": 11949,
+        "sha256": "2283ba8f3c51de7dc7a93fe2ebd0d9d0e7b96710e2c7aee7fd9c4c0ff4929789"
+      },
+      "nlm/Makefile.am": {
+        "bytes": 1063,
+        "sha256": "390eeef1e8df43fdd054d613d224bece4cb53c6b010b6fd018565ffdb32eddc4"
+      },
+      "nlm/nlm.c": {
+        "bytes": 6404,
+        "sha256": "1cb94da9cef71f51b3cf2f52678e95151774ce5f69f1edff18a33544122ec040"
+      },
+      "nlm/nlm.x": {
+        "bytes": 4478,
+        "sha256": "bc924eea6042773031c3a5e913371f551d7bc7a07bc48c5da5127ae29f2e32b8"
+      },
+      "nsm/CMakeLists.txt": {
+        "bytes": 101,
+        "sha256": "04316f9bfc3233f1037b9421e37549c8dc524bbcc4ec89b35f1efec2447c569b"
+      },
+      "nsm/libnfs-raw-nsm.c": {
+        "bytes": 3797,
+        "sha256": "e0220e6df6449bafa9dc653b559d1ebd4ce1c93d5cd0c5478bbf1a846f014bb3"
+      },
+      "nsm/libnfs-raw-nsm.h": {
+        "bytes": 6442,
+        "sha256": "3fdaffd510923f554a3788a59b25d67b08a035481129511ef2741325aaceae75"
+      },
+      "nsm/Makefile.am": {
+        "bytes": 1063,
+        "sha256": "3ced519cdab8a715e9482dbaa53678706585429109be8aeb929fd0d687b8aa0f"
+      },
+      "nsm/nsm.c": {
+        "bytes": 5794,
+        "sha256": "44180f414c9e3b86d2c65c52f8ce36d06c232c53ee276badbaaa8ce5975da635"
+      },
+      "nsm/nsm.x": {
+        "bytes": 3329,
+        "sha256": "9781238170634d4ea02219efa8f0c7d533de3421a78f87897e55085addc02da9"
+      },
+      "packaging/RPM/libnfs.spec.in": {
+        "bytes": 23703,
+        "sha256": "8e4e0babf42e78e2835e7726fc9521f657f3fba3e66b8044f621461f8023ccd6"
+      },
+      "packaging/RPM/makerpms.sh": {
+        "bytes": 2986,
+        "sha256": "f7d9ce2023f16a29af1b7f8267f627cde1ee90b17517f234b07e5d72b733b468"
+      },
+      "portmap/CMakeLists.txt": {
+        "bytes": 117,
+        "sha256": "46bde947245998002dec866b6d1fe797ed0d32893a2967a3297ba4f37f79394d"
+      },
+      "portmap/libnfs-raw-portmap.c": {
+        "bytes": 15542,
+        "sha256": "8d25c45c007593338c57569d84906afc8caa73008362931f6af02545afa7193e"
+      },
+      "portmap/libnfs-raw-portmap.h": {
+        "bytes": 22774,
+        "sha256": "4bd16049fc530be80da3975fe33966358792451f3c7536a6f0dafbcbe18cf9b5"
+      },
+      "portmap/Makefile.am": {
+        "bytes": 1244,
+        "sha256": "1813745e1077d1da08c0687c95162eef6742c6d35227188a226b9914ed188a74"
+      },
+      "portmap/portmap.c": {
+        "bytes": 20715,
+        "sha256": "cc43bfaa102eacf6cfc63fa6f20e3e77b23bf77ddcd65a0266ff3615696b6755"
+      },
+      "portmap/portmap.x": {
+        "bytes": 8612,
+        "sha256": "5e987cfe342fc488e91b1c3a265b1ff9e6f4a33d5f781a360711a74e65cd0313"
+      },
+      "ps2_ee/config.h": {
+        "bytes": 1285,
+        "sha256": "69d0382e4a8b42a2c1d87c29cd51d2064c4d2ef26854ac26f54fb6c4a0d753c6"
+      },
+      "ps2_ee/Makefile.PS2_EE": {
+        "bytes": 1153,
+        "sha256": "1d6bb1197704002ef28fe1c5ae37e2b1d41db4a449d9332f7d4947a05068e78a"
+      },
+      "ps2_ee/ps2_compat.c": {
+        "bytes": 1980,
+        "sha256": "ef1cdaaf98cae00f3645a98f8dd9f66cc64e180843f59697d383c65400a9895c"
+      },
+      "ps2_ee/ps2_compat.h": {
+        "bytes": 2996,
+        "sha256": "1eabc6a9f4a62693dff100cf681f6be11eb61d2818c56922e2932c77842e9820"
+      },
+      "ps3_ppu/config.h": {
+        "bytes": 1412,
+        "sha256": "d95cc45ab2cc37ae435e4b336169c1c984c6dcf1aaecea1dac88c4a7200a0a40"
+      },
+      "ps3_ppu/Makefile.PS3_PPU": {
+        "bytes": 3278,
+        "sha256": "3f163fb94c2cafe9fdf8ff91a65dbef51614689cd0613b62ccbc0b636e94e934"
+      },
+      "ps3_ppu/ps3_compat.c": {
+        "bytes": 1949,
+        "sha256": "f1e7566155f832a26393a6c68fc65146aa510bee91c5c3107eb0d16b34a86a8a"
+      },
+      "ps3_ppu/ps3_compat.h": {
+        "bytes": 3470,
+        "sha256": "68567a6639dc9e4a4b20c698de2768d97ba473967c2977fbaeab3a71a39a9543"
+      },
+      "README": {
+        "bytes": 16652,
+        "sha256": "97d6f45886b5d317e43ef651e96b6a79a878f3abeaf7774be4b767daddb80604"
+      },
+      "README.multithreading": {
+        "bytes": 3642,
+        "sha256": "38a208f7194516c237213a38b8fd2cae7078612570e32a8a5c24af352facb2fb"
+      },
+      "README.security-scan": {
+        "bytes": 5605,
+        "sha256": "f4c7ff25fc073d38eb5b014dd358cc2c9a9a7a14fd43c2c3fd7506ded626cdd4"
+      },
+      "rquota/CMakeLists.txt": {
+        "bytes": 113,
+        "sha256": "0db7e414c48e33ec8029060a3b3320e3c84eb61d13a5f74e13c816281b4b3378"
+      },
+      "rquota/libnfs-raw-rquota.c": {
+        "bytes": 5803,
+        "sha256": "87985d3c0d453402f717cf5bcd1318805e71e9c1a23a2c1705e0905a17c2beb8"
+      },
+      "rquota/libnfs-raw-rquota.h": {
+        "bytes": 5589,
+        "sha256": "eff5ce3a31ff40ea363b314e5c026edc301a4dd93b5d047a01146632be38cce9"
+      },
+      "rquota/Makefile.am": {
+        "bytes": 1144,
+        "sha256": "9efdf8aa1e246a40a50041b34742f2f96735d629fabb401b74402600ab365174"
+      },
+      "rquota/rquota.c": {
+        "bytes": 5863,
+        "sha256": "b253033f338c45110c3b8aae4dfce7787e9a8c288c1bae2f3845defb17a9f118"
+      },
+      "rquota/rquota.x": {
+        "bytes": 2813,
+        "sha256": "31fa7cd342b8960f283aa5b56778e3b38dd815b9f44d5a3ff2bc3f99cdc7e8e1"
+      },
+      "servers/libnfs-server.c": {
+        "bytes": 18394,
+        "sha256": "5e07451d10c1acda93faacfede0a5fddcd0e6c2eff0ff5dbf2f8a0e4a35f0ecf"
+      },
+      "servers/libnfs-server.h": {
+        "bytes": 1926,
+        "sha256": "0e060928cb77509d559f0c05bf06bf119403e4976762e6aa39da32daf4928b84"
+      },
+      "servers/Makefile.am": {
+        "bytes": 653,
+        "sha256": "7cefa011ae84308aecfeea08b69cd7ceb5d34145940ee8270f5e193ff99196b3"
+      },
+      "servers/nfsd/Makefile.am": {
+        "bytes": 387,
+        "sha256": "bdda153752ac878b284e0726a4d7746f84318e8ce714e625afbbc57f31d932ee"
+      },
+      "servers/nfsd/mountd.c": {
+        "bytes": 12623,
+        "sha256": "9eea3ac49b0215e3cf874ad50918140962b82910f17c2d604bffb13cd438fbd7"
+      },
+      "servers/nfsd/mountd.h": {
+        "bytes": 1936,
+        "sha256": "112ea86b7347257ce2c9106de1dbb85d9b8ed4951b2db836eb9013cffa02ad63"
+      },
+      "servers/nfsd/nfsd.c": {
+        "bytes": 8121,
+        "sha256": "f455d1b69eec5d40f00fb52907eb417531b35f7bfd3bf116ed6b737e44b404e9"
+      },
+      "servers/rpcbind/Makefile.am": {
+        "bytes": 1029,
+        "sha256": "3d6e98a05f4262a130f9a7f3e9698874e98f3fca1722b31f078d58dbb5a4521c"
+      },
+      "servers/rpcbind/rpcbind.c": {
+        "bytes": 29131,
+        "sha256": "a854068b7764d187a1488973d3690e4ce7cc36be7bbdd60535b647449ecbe463"
+      },
+      "servers/rpcbind/rpcbind_data.c": {
+        "bytes": 2371,
+        "sha256": "3f9e1ff3d7b52d89f7f1833fe868314ea9414f0b10a9678954571a68bf8264af"
+      },
+      "servers/rpcbind/rpcbind_data.h": {
+        "bytes": 832,
+        "sha256": "9363b27aa8ee58fbb077676e04a1e3079e10458d158474dd491aaf1569284c2e"
+      },
+      "servers/rpcbind/rpcbind_data.x": {
+        "bytes": 304,
+        "sha256": "3a5c01c2f03f343c6a11a0b6ec7024d5965a285691e5d8cd8e9d84a5580ee8e5"
+      },
+      "servers/statd/Makefile.am": {
+        "bytes": 333,
+        "sha256": "84948d6a87e2a419ee56c9552cc45bb006b4a7d7f3b8f7faa07d8568e93660cd"
+      },
+      "servers/statd/rpc.statd.c": {
+        "bytes": 5034,
+        "sha256": "bb0cae9f0a8e0abc90b0a069a40871e463a8644da13ff0a80d7914e5a839570c"
+      },
+      "tests/CMakeLists.txt": {
+        "bytes": 2446,
+        "sha256": "6854964ca849da6b2ba4a2f36645e8124ce7a22f16fbdb0f2bd8bb60d5fd810f"
+      },
+      "tests/functions.sh": {
+        "bytes": 456,
+        "sha256": "98e2949a28e5cd1d1f5f15e44ba37ac255b9388af6143c6b89c3deae6c904e2a"
+      },
+      "tests/ld_timeout.c": {
+        "bytes": 2261,
+        "sha256": "00b4ff163896137bdf5cb14119072d707977bf8e343edc3fcaf21e34870b645a"
+      },
+      "tests/Makefile.am": {
+        "bytes": 1630,
+        "sha256": "ef48c1b595c2781a1ebc2ff3ef79f9021777a65cb629d2b3354d5efa3a2521ee"
+      },
+      "tests/prog_access.c": {
+        "bytes": 2333,
+        "sha256": "5720b5b4096ff4e234b193ea2a3ec4b500f71c7b3b5ab0742df21396b8c0803d"
+      },
+      "tests/prog_access2.c": {
+        "bytes": 2436,
+        "sha256": "934969c310daff548b121a87cc4bbeda1d5a5dc960a8736cf9779c0dbdcce7bb"
+      },
+      "tests/prog_chmod.c": {
+        "bytes": 2166,
+        "sha256": "2ed845e74ee4d7b2d5483a664e49d22102458e33da8df694e547a0513f5bc6f1"
+      },
+      "tests/prog_chown.c": {
+        "bytes": 2213,
+        "sha256": "0ca32c831ce720393a9993fc4282e7c03a4aaad0b1883490c0f2ba5333dcb43b"
+      },
+      "tests/prog_concurrent.c": {
+        "bytes": 5558,
+        "sha256": "dff843ed9196562e0d1b1fab285e180207b657f2e9a25e3ca27f48474e1b2f32"
+      },
+      "tests/prog_create.c": {
+        "bytes": 2327,
+        "sha256": "73ad66042602a6062b513dffe5c4ce5f6ae52e8b7c241ce8559a0dfb17f686e9"
+      },
+      "tests/prog_fallocate.c": {
+        "bytes": 6854,
+        "sha256": "22cb174eb9557dadd638f7472db382855f6665161b1614f6b2372721e4b3f79e"
+      },
+      "tests/prog_fchmod.c": {
+        "bytes": 2451,
+        "sha256": "e3a0c0400673486fea561f11ccb52e74475c19a139b42db5afdd2f83a1df7010"
+      },
+      "tests/prog_fchown.c": {
+        "bytes": 2498,
+        "sha256": "9e84d87290e8f251eb7a4bb72e7c6593fe8524315dc391dd518133689dab30da"
+      },
+      "tests/prog_fstat.c": {
+        "bytes": 2604,
+        "sha256": "7f3c0cae73292b7f8b7fda943b57ea680a181ffe801300ce9c4bb7130261ed90"
+      },
+      "tests/prog_ftruncate.c": {
+        "bytes": 2216,
+        "sha256": "11f4821eb5648815f6cea3fc22b6b88c015b372092f026689a7a78457c31e177"
+      },
+      "tests/prog_lchmod.c": {
+        "bytes": 2169,
+        "sha256": "f6abae95dc1840ad18ec189a4a7ce1583073e77651cd6eea4771c03b26e7ee8d"
+      },
+      "tests/prog_lchown.c": {
+        "bytes": 2216,
+        "sha256": "edd9af77d53daa31cea9c57431eda8049fb6f28e9b41c96f93e82dfd4d6e9de2"
+      },
+      "tests/prog_link.c": {
+        "bytes": 2084,
+        "sha256": "022c89a8f2b7c554e90974aac976421de8596ffb0d800e5e5e955482d64cc7d5"
+      },
+      "tests/prog_lseek.c": {
+        "bytes": 4817,
+        "sha256": "e9466260a0fd9d32c3f1faa733be38d69e89b8d4edbd71d3fa18adc2fee0ef63"
+      },
+      "tests/prog_lstat.c": {
+        "bytes": 2531,
+        "sha256": "3af18f2acf5d6a89320ca948d4fd0f162ccee94aefe536159023f3ef10acf66e"
+      },
+      "tests/prog_mkdir.c": {
+        "bytes": 2065,
+        "sha256": "582c591403a17ae189e8ba0829a27ed06a4dfaf9a3a042fb310ceb17544155d5"
+      },
+      "tests/prog_mknod.c": {
+        "bytes": 2226,
+        "sha256": "399348181a2cb91668c2e2c42c51fb601c5b19ccee9e58fe24f2026add12ffc9"
+      },
+      "tests/prog_mount.c": {
+        "bytes": 1727,
+        "sha256": "40a02b761c23cbbc980f2c3a028a546796785b18422c00036ecf14a4115525f3"
+      },
+      "tests/prog_nfs3_read_reply.c": {
+        "bytes": 4635,
+        "sha256": "2bc48cc7ef84d28b3fe3b0f44713983394c80f0772246d0f3936c542aa95a62c"
+      },
+      "tests/prog_nfs4_delay.c": {
+        "bytes": 17101,
+        "sha256": "c61e565373304c01e522c71e7b3bf0274d391ff69a68536e64d2a975979df024"
+      },
+      "tests/prog_nfs4_errno.c": {
+        "bytes": 544,
+        "sha256": "77850a44e86fedc010b7d06728353cf79e886751a2f13a5d0f09a6c909ac405c"
+      },
+      "tests/prog_nfs4_stat.c": {
+        "bytes": 3156,
+        "sha256": "b7bc8328bd0334ace2652365ae27367fad2fda04f848cb3b8658e743ed8b915d"
+      },
+      "tests/prog_open_read.c": {
+        "bytes": 3352,
+        "sha256": "18a8b3a3e0733b4b5864c195c0515c41fa3cd122c91320fe820b053871e69517"
+      },
+      "tests/prog_open_write.c": {
+        "bytes": 3349,
+        "sha256": "af27215b057ac60bd7f1e6e6e259a72f0895e9b0649b0003d53eb26f748258ce"
+      },
+      "tests/prog_opendir.c": {
+        "bytes": 2351,
+        "sha256": "531ca2cb34f7b4d074b5e6d990466b1e7edb498c44d794802079bffdc2b628bf"
+      },
+      "tests/prog_parse_url_full.c": {
+        "bytes": 1643,
+        "sha256": "cb4a3d4d61eb928b112db55556cb9a07b45cdd8e62c05fc0a8f39f8a27ca4467"
+      },
+      "tests/prog_read_update_pos.c": {
+        "bytes": 3765,
+        "sha256": "27466ff6b1c547d3f4387d9bcc8489515d6874a2deb3c632be8a22a6c0ce418b"
+      },
+      "tests/prog_readonly.c": {
+        "bytes": 3447,
+        "sha256": "59e90004821ec9d3f88f7ab630baa1d4dfe7ee60e1d8ef9f76c91304be05715b"
+      },
+      "tests/prog_rename.c": {
+        "bytes": 2090,
+        "sha256": "a3c08ed45f5b366a16c920e4929115fff04ae7b6b0c321fff7295c1e0731d18d"
+      },
+      "tests/prog_rmdir.c": {
+        "bytes": 2065,
+        "sha256": "863408a66246bb0d9f0cccbec3b2d08878d20132b59dd826e62560659c4b6151"
+      },
+      "tests/prog_stat.c": {
+        "bytes": 2527,
+        "sha256": "195cbf5553385c5cba4d98de9ef600e5279ef2f04ba333c0f385c65269be920d"
+      },
+      "tests/prog_statvfs.c": {
+        "bytes": 2575,
+        "sha256": "7bf11847195245353edc11fcca3ba561035f71b902e6050dfd17119fc3282fd4"
+      },
+      "tests/prog_symlink.c": {
+        "bytes": 2673,
+        "sha256": "5fbfa44fc9a492bb7c41e9c10decf7f136aee84ca6416698eb525f1401a27dda"
+      },
+      "tests/prog_timeout.c": {
+        "bytes": 2445,
+        "sha256": "62dceff1dd5e18daa413e0655228da8f1f43507f212262e6be790241d34798cd"
+      },
+      "tests/prog_tls_reconnect.c": {
+        "bytes": 8933,
+        "sha256": "837a013be6496aa99faa970b8c78a61da9e911da11c6aab19b541b080ce72980"
+      },
+      "tests/prog_truncate.c": {
+        "bytes": 2398,
+        "sha256": "0408a0ca6e2f757f73137017d07c65a2ad12ddf0a993081e46181e76f97daa35"
+      },
+      "tests/prog_unlink.c": {
+        "bytes": 2068,
+        "sha256": "3160cef2e787254c7acc2a78c9d24679618937488f26110fa0c26a70926ef851"
+      },
+      "tests/prog_utimes.c": {
+        "bytes": 2352,
+        "sha256": "c8a2d87cae6e3e64eb57dc781d5798111a3706a6249085d8ad7f4556b778adde"
+      },
+      "tests/prog_zdr_alignment.c": {
+        "bytes": 5187,
+        "sha256": "cc35d6b1f9ddcf06d474b77505706c8183e564bc0fc52c05660da8807c485d0d"
+      },
+      "tests/prog_zdr_bytes_zero.c": {
+        "bytes": 6864,
+        "sha256": "859e88065afda0104c20a37270144e0718a1bcc540c059e4b5019d797b483829"
+      },
+      "tests/README": {
+        "bytes": 431,
+        "sha256": "7b0d6226ef613625deb2321e2cb56a26bcfb7b70a0f2dde26f8fa7657a45859c"
+      },
+      "tests/test_0100_ls_basic.sh": {
+        "bytes": 406,
+        "sha256": "d6e4912d75d68117a21e72f6300f36b55ff9a1e56946f586218f744efdfb5e29"
+      },
+      "tests/test_0101_ls_discover_server.sh.disabled": {
+        "bytes": 264,
+        "sha256": "05876f8e46d732697affccaa101c8ef5513b5d03f553fccedb54581ef6c1011d"
+      },
+      "tests/test_0102_ls_discover_shares.sh": {
+        "bytes": 289,
+        "sha256": "d580ad0e0270fbd639082123962142455bf019f57b98df9a031c7dc8d4e222bd"
+      },
+      "tests/test_0110_readonly.sh": {
+        "bytes": 425,
+        "sha256": "481399a451adce8852652e8ca318631f5b26b5eeef544710935fbc1a30516786"
+      },
+      "tests/test_0200_stat.sh": {
+        "bytes": 1468,
+        "sha256": "a3fffc1ac98ea61e7784cdb983b94cbb0832c9627ff458c179b4e3773c6fbd8f"
+      },
+      "tests/test_0201_stat_paths.sh": {
+        "bytes": 1476,
+        "sha256": "d0fa909bfbbf56cff5c592fe23f60f7d8b0517bb04fbddb269e5702cf87671d3"
+      },
+      "tests/test_0202_stat_valgrind_leak_check.sh": {
+        "bytes": 1482,
+        "sha256": "3473dd9a0ced89d9bcc776c8523b78c659598a8e39cdc420f7be52415e4602ff"
+      },
+      "tests/test_0203_stat_symlink.sh": {
+        "bytes": 1470,
+        "sha256": "baaadce033cd3de8bfd9d4aaa57181bdce8f4196384c5a45560af199f7be5f1e"
+      },
+      "tests/test_0204_nfs4_stat.sh": {
+        "bytes": 1162,
+        "sha256": "14c43349abd195a40a00830fbacfea90c9b8337f1982bbbaf7098594be393f8c"
+      },
+      "tests/test_0210_fstat.sh": {
+        "bytes": 1429,
+        "sha256": "20afd3517b46aff9ae33563be2833dfcecdaed4328f8b88e512b56526461491b"
+      },
+      "tests/test_0211_fstat_paths.sh": {
+        "bytes": 1151,
+        "sha256": "7c5abe77e8057396febc6e4627d86bfadf8dc34e635d2ef242cba663ba95e02d"
+      },
+      "tests/test_0212_fstat_valgrind_leak_check.sh": {
+        "bytes": 1504,
+        "sha256": "40ff2f641502f711ff02e1d0186a67f64adf37c74f5cd0f8e1dab53aeb0c31cc"
+      },
+      "tests/test_0220_open_paths.sh": {
+        "bytes": 1955,
+        "sha256": "0df739e6ba6e67baddf570c12d5fa195eb233b254f45614380272ddf59297bfc"
+      },
+      "tests/test_0222_open_valgrind_leak_check.sh": {
+        "bytes": 1587,
+        "sha256": "fb80eea57e5509a8130f4d2375d82067b0299959149cfbebea9afa3ea1e693b3"
+      },
+      "tests/test_0223_open_O_TRUNC.sh": {
+        "bytes": 796,
+        "sha256": "252dda104d059abeadd845a785b602403135d77f888ed1c73c33bb62cb7a12ff"
+      },
+      "tests/test_0224_open_O_APPEND.sh": {
+        "bytes": 543,
+        "sha256": "3c564b024307ea843868cb42aca8ab8ac8fda325a2e0d081a9a18a92f5809d85"
+      },
+      "tests/test_0225_open_O_CREAT.sh": {
+        "bytes": 1778,
+        "sha256": "8c7bce2de0004f2b58c7b3ed05a58b482087bf0819f7239df6a7b9c6b65d19c3"
+      },
+      "tests/test_0230_creat_paths.sh": {
+        "bytes": 1379,
+        "sha256": "4bb89e9276142d34e703136a48eee56b61f778107c3666113e19426628f2765b"
+      },
+      "tests/test_0240_link.sh": {
+        "bytes": 1790,
+        "sha256": "aed1951bda980e0a5bbcd3c133c1c40108016400f973556a5900cc539e652dfc"
+      },
+      "tests/test_0242_link_valgrind_leak_check.sh": {
+        "bytes": 2595,
+        "sha256": "36f0ef20960d4bb1f43a04ff7e191c628968cc349372165931fd70b948fe3208"
+      },
+      "tests/test_0250_rename.sh": {
+        "bytes": 3413,
+        "sha256": "db7908db340b342f7f6123d32757a42c59d35839ab98f8bb5cf5aaca3c535ce1"
+      },
+      "tests/test_0252_rename_valgrind_leak_check.sh": {
+        "bytes": 3393,
+        "sha256": "4ad37b1a23f7d1fd5c29fddd18fd89e4a17d64457c0f0ede3de990b3815f6ca2"
+      },
+      "tests/test_0260_symlink_paths.sh": {
+        "bytes": 2233,
+        "sha256": "1ad0f72e7500b131ba29932c9ef2b47ace5b95a23ff27b21b942c512ce553a54"
+      },
+      "tests/test_0270_unlink.sh": {
+        "bytes": 1277,
+        "sha256": "e123bbf1aeb9e0f20d20b740cfd6554282dcbc307a7cdc65d8fca13031905149"
+      },
+      "tests/test_0272_unlink_valgrind_leak_check.sh": {
+        "bytes": 1582,
+        "sha256": "da5cf3564189c8745cd23969b7a579f11e7962b5962348756a65d2a958962800"
+      },
+      "tests/test_0280_mkdir_rmdir.sh": {
+        "bytes": 2597,
+        "sha256": "62559f4d303767c48c02b162982c8d7e8926d8cea38723bb7ad0dd4f6150d24c"
+      },
+      "tests/test_0282_mkdir_rmdir_valgrind_leak_check.sh": {
+        "bytes": 2657,
+        "sha256": "4bd472a2980b2c9d4bd5cabe99de98ed8281692012a94ae5889bce5d15e61d9f"
+      },
+      "tests/test_0290_read.sh": {
+        "bytes": 539,
+        "sha256": "2865fb73e671c8a338ec1bd6d77423257713a11e26ca1bf2472babd4ae5f5955"
+      },
+      "tests/test_0291_read_update_pos.sh": {
+        "bytes": 358,
+        "sha256": "bd83fecd9fc0804ab9b835109e3305078bbb1dd0f60c7a904d9f422e11a85650"
+      },
+      "tests/test_0300_write.sh": {
+        "bytes": 435,
+        "sha256": "90eab11fbe9637caddf6d9311d6ca62d5dc6d42163d1c82b406b6c181754c2aa"
+      },
+      "tests/test_0310_mknod.sh": {
+        "bytes": 1909,
+        "sha256": "e8793f854398ff5351f8279e7b52382641178fd87f02f50746b5271759782bac"
+      },
+      "tests/test_0320_lstat.sh": {
+        "bytes": 1448,
+        "sha256": "136d7912b3c7134c12c2d427a490a30d3cb2fbf4ef90b2a48900bb15f2270d47"
+      },
+      "tests/test_0321_lstat_paths.sh": {
+        "bytes": 1501,
+        "sha256": "7d31c134252bd45faeae53b889f5405d66d55caf706bd9da5f638b2fbaae41b7"
+      },
+      "tests/test_0322_lstat_valgrind_leak_check.sh": {
+        "bytes": 1504,
+        "sha256": "fd85f1e2842d6d2218b933e62321aa8fb381d3b1c3ad860f9d9bd52c140a3534"
+      },
+      "tests/test_0330_ftruncate.sh": {
+        "bytes": 534,
+        "sha256": "3d8c8edaad72a7cd543ec15f395494d53fb70e5715b5e9ded28ed52ee162901a"
+      },
+      "tests/test_0332_ftruncate_valgrind_leak_check.sh": {
+        "bytes": 407,
+        "sha256": "57792058746d14f94aaad1048879e8b3659fc785c47af7343cf3fa3195d40911"
+      },
+      "tests/test_0340_truncate.sh": {
+        "bytes": 529,
+        "sha256": "8c6364c00a727746ffc51d7358369d65896e1d080034bccd0558cd1c058e7497"
+      },
+      "tests/test_0341_truncate_paths.sh": {
+        "bytes": 1414,
+        "sha256": "b115055ddd53e732efee58a131cf34af71143eed23bf111dc768d43057e15480"
+      },
+      "tests/test_0350_lseek.sh": {
+        "bytes": 263,
+        "sha256": "de7ef1235e9b29bd34e58c0a73ee43bfcc7f81f1a2f1a24ad5c8491d8141b7dd"
+      },
+      "tests/test_0360_statvfs.sh": {
+        "bytes": 508,
+        "sha256": "5946d26a3750b769ae4a927e7cd8c4dcab8078ed8e3be29243fc49153f9250c0"
+      },
+      "tests/test_0370_chmod.sh": {
+        "bytes": 1639,
+        "sha256": "dfe3d104854669bd6ca00a041afa87d0cce1f48d87ca40fa400842062821820f"
+      },
+      "tests/test_0380_lchmod.sh": {
+        "bytes": 885,
+        "sha256": "5d513791361f55a3be1f107e95c4d8d288f20ab658f41b07c6c376096660968f"
+      },
+      "tests/test_0390_fchmod.sh": {
+        "bytes": 885,
+        "sha256": "0d06063a2d612efe4926a1a4af506e8c14fca1226902e05b706e01104ce9e50f"
+      },
+      "tests/test_0400_chown.sh": {
+        "bytes": 2155,
+        "sha256": "0d5c058e37122abdf5ab8e2848dfb2ddc4e160c5221b396a22d2fdf46da2a107"
+      },
+      "tests/test_0410_lchown.sh": {
+        "bytes": 1135,
+        "sha256": "39fb5ffdc7598bf8b9d72119f39dff5f1d7b2ba7a01db88e959df91db70f57e3"
+      },
+      "tests/test_0420_fchown.sh": {
+        "bytes": 1135,
+        "sha256": "51dfb3091c2d5a5515fdbe3556e47e04a009f2cfe2ddf63ee967f22c8bf5c01d"
+      },
+      "tests/test_0430_access.sh": {
+        "bytes": 1226,
+        "sha256": "f4812a79d4fb1ff9d5f11279b2a410e3c2032a7e8f77adc48c2e7d11c51c2493"
+      },
+      "tests/test_0440_access2.sh": {
+        "bytes": 1239,
+        "sha256": "b57cab42ab5db5130d98983a4d7568e1d877101113c357f1730dae4f1810ec58"
+      },
+      "tests/test_0450_utimes.sh": {
+        "bytes": 1216,
+        "sha256": "c434c930f8fd28c8665c4c966ce73485ece03327bd4bc26b8b313bb1631716b9"
+      },
+      "tests/test_0460_opendir.sh": {
+        "bytes": 1660,
+        "sha256": "efc0b76bf32f6a97802176eb8ccbf2e46de1b5464c156de725533b58f8bf19ea"
+      },
+      "tests/test_0470_fallocate.sh": {
+        "bytes": 2396,
+        "sha256": "1a02edb4eb86d0e0779b756f8dc054bf3c43e39d708e492f76a7b21aa6f28ee9"
+      },
+      "tests/test_0480_concurrency.sh": {
+        "bytes": 756,
+        "sha256": "ea686d1a5decc98ffe632e94e696f2acfc23123274855da7836a50bd7011b0f3"
+      },
+      "tests/test_1000_mount_paths.sh": {
+        "bytes": 437,
+        "sha256": "76bed9086faf6a4226a2a124913a8ec85b349ba33104b47fc2821e6f77b981a8"
+      },
+      "tests/test_1010_chdir_paths.sh": {
+        "bytes": 385,
+        "sha256": "d18c49c58e76851b54d7aded5e748d45105ad0876fc9f24bd134f57925e28258"
+      },
+      "tests/test_8000_timeout.sh.disabled": {
+        "bytes": 426,
+        "sha256": "c00b00a6d77dbd3f5296afb2776049c07bf1def64b897bb9bade500fecf88639"
+      },
+      "tests/test_8010_parse_url_full.sh": {
+        "bytes": 765,
+        "sha256": "1e8a9aa12063e0678fac6174de03ade55af3ad548449d8e5cbad9318ec39bfaf"
+      },
+      "tests/test_8010_valgrind_parse_url_full.sh": {
+        "bytes": 502,
+        "sha256": "df6bc5870ec3617bbba1b8feb740f67460ac4e52e28f34cd1bd23efbe6e3546d"
+      },
+      "tests/test_9900_valgrind_leak_check_full.sh": {
+        "bytes": 2263,
+        "sha256": "663641794cdb813c14389ffe55cb75ab6aff392ec183d9f41b723771db6cb671"
+      },
+      "tests/test_9910_valgrind_timeout.sh.disabled": {
+        "bytes": 456,
+        "sha256": "81167ac932b625437c791b1032838aa2b27e83181005b8f4dd992f9362a9dfa4"
+      },
+      "tests/test_9990_build_rpm.sh.disabled": {
+        "bytes": 289,
+        "sha256": "98704630d8cb034aca71dc25e107e6f0b2b27367112f5ba392fb3ff81d92bbb3"
+      },
+      "tls/CMakeLists.txt": {
+        "bytes": 105,
+        "sha256": "911b756f9c5f65f2b2ac5b3b008456b61941076983cc6bfead3778dd48675f74"
+      },
+      "tls/handshake.c": {
+        "bytes": 14890,
+        "sha256": "4dc00e66d7851ac46b9831742906fadfd679e865df81bad33b96c893104d4dfd"
+      },
+      "tls/ktls.c": {
+        "bytes": 7916,
+        "sha256": "09743dc9d683a2371d74e44214acb3ba30487a4eff0e62b01f6a825588f466fc"
+      },
+      "tls/Makefile.am": {
+        "bytes": 515,
+        "sha256": "ff07ea315f70baa4276121e8e144e0b4d32e76d043237d732b02a16b0607f78a"
+      },
+      "tls/tls-private.h": {
+        "bytes": 1486,
+        "sha256": "6057911bdbd7563f4a6edf6a890bfee154c5f41ebac613e9841064e95c31f5a5"
+      },
+      "utils/CMakeLists.txt": {
+        "bytes": 626,
+        "sha256": "3816f08a8c0f752e084cd7f80d0f8c493f2abebe807e0b01f5c54ef145b61b19"
+      },
+      "utils/Makefile.am": {
+        "bytes": 469,
+        "sha256": "fe5d53b9a109bff43be72ebe19f2bacb2dae8c52bcd63593bcd0a1a477047439"
+      },
+      "utils/nfs-cat.c": {
+        "bytes": 4724,
+        "sha256": "920b9070fd210b704f046f5abf98c8e8130886741d53b6ae5c59cb04114cdf95"
+      },
+      "utils/nfs-cp.c": {
+        "bytes": 10985,
+        "sha256": "d81622b5c39d507787009d984e9d0eb393f85b3cf2987a22c63b174bd7ff7eb9"
+      },
+      "utils/nfs-ls.c": {
+        "bytes": 7367,
+        "sha256": "9fb4ab7d070be26daa9ebb9d164bb10989696b4ac7e0550ede5ebe4871be172c"
+      },
+      "utils/nfs-stat.c": {
+        "bytes": 5140,
+        "sha256": "ca7e89ab31df608a465a83fe4df5807a0227d1a372257250149d90cee1270104"
+      },
+      "win32/CMakeLists.txt": {
+        "bytes": 131,
+        "sha256": "f415eed6af69173a642179206b4a429a7574ceb9823f97e8084b0bb043596e05"
+      },
+      "win32/libnfs/libnfs.sln": {
+        "bytes": 5117,
+        "sha256": "7d26ab1f515067d2bd28493c5be6999f3ece9cb7abd558b1731bdc397b4b2ea0"
+      },
+      "win32/libnfs/libnfs.vcxproj": {
+        "bytes": 12143,
+        "sha256": "d52d1dca28ba129e1d28d8782721c0af0a1bfcca7b20bb305694f2d164376e96"
+      },
+      "win32/libnfs/libnfs.vcxproj.filters": {
+        "bytes": 4614,
+        "sha256": "e34ee38e962a8f229da196243017664d7c1c8e5e24b77c8debe54ece523ebfde"
+      },
+      "win32/libnfs/libnfs.vcxproj.user": {
+        "bytes": 168,
+        "sha256": "c06a75b13f855a94d46616796e024c52b499f8f92cf00ccb571ddbc6ff574676"
+      },
+      "win32/libnfs/version.rc": {
+        "bytes": 2474,
+        "sha256": "f93f01f196fc001e7b92453597676c5637a71d75366a99c5379e6972c92dc9d1"
+      },
+      "win32/libnfs/x64/Debug/libnfs.dll.recipe": {
+        "bytes": 309,
+        "sha256": "b2953a71fb5a24600c348a231a2ceb922bedb266cdc6bf67127a8ca7ed81e767"
+      },
+      "win32/nfs-cat/nfs-cat.vcxproj": {
+        "bytes": 8960,
+        "sha256": "f5dee4cbf35092b57530a2fde72fb9073caff56fa84cc6cc438f715986660897"
+      },
+      "win32/nfs-cat/nfs-cat.vcxproj.filters": {
+        "bytes": 517,
+        "sha256": "b0929ad65e0d3c8c348f7eadf80cf9e7fbcb6e02536ccb708b9cae128588ee85"
+      },
+      "win32/nfs-cat/nfs-cat.vcxproj.user": {
+        "bytes": 168,
+        "sha256": "c06a75b13f855a94d46616796e024c52b499f8f92cf00ccb571ddbc6ff574676"
+      },
+      "win32/nfs-cp/nfs-cp.vcxproj": {
+        "bytes": 8793,
+        "sha256": "23ed1bb5505d0e801b56b2353f357ec5599854ed213d7b36fa59f1b11063d6c2"
+      },
+      "win32/nfs-cp/nfs-cp.vcxproj.filters": {
+        "bytes": 502,
+        "sha256": "cc2831a2508b62d7036fa4357dbf1eabf23237e1869960030a9c0c8c4f9956ef"
+      },
+      "win32/nfs-cp/nfs-cp.vcxproj.user": {
+        "bytes": 165,
+        "sha256": "c65b2b1a71dcd26333d8dc209ffeb90a906ddd8bbab6d45dada8e3bc84c30226"
+      },
+      "win32/nfs-ls/nfs-ls.vcxproj": {
+        "bytes": 8793,
+        "sha256": "746b78c683dc09ecece7346bfbf529b1a313986b670eb056adff816d9aa2347b"
+      },
+      "win32/nfs-ls/nfs-ls.vcxproj.filters": {
+        "bytes": 502,
+        "sha256": "adfa0caa6b50d09aaa9a710c7873d87b008bf57421106cc5ca45ed6aa861d153"
+      },
+      "win32/nfs-ls/nfs-ls.vcxproj.user": {
+        "bytes": 393,
+        "sha256": "a389dc6927b2549938209d1c036b41954b020cd70e840484d218b3fd74b43287"
+      },
+      "win32/nfs-stat/nfs-stat.vcxproj": {
+        "bytes": 8961,
+        "sha256": "50ea0a80282d36ad6384fb5bd8b93db707947a44a92beb922e74e7309bc7b7a4"
+      },
+      "win32/nfs-stat/nfs-stat.vcxproj.filters": {
+        "bytes": 518,
+        "sha256": "412af59145ae4c6c948a996e7f4647ede2c54cae5d262d6e1d1ab13df294f5fd"
+      },
+      "win32/nfs-stat/nfs-stat.vcxproj.user": {
+        "bytes": 168,
+        "sha256": "c06a75b13f855a94d46616796e024c52b499f8f92cf00ccb571ddbc6ff574676"
+      },
+      "win32/nfsclient-async/nfsclient-async.vcxproj": {
+        "bytes": 8648,
+        "sha256": "69fcb3f2902bd556894be7b8d833e7dcd0a0c02326a00d09b5d7b87e7d7bc6e8"
+      },
+      "win32/nfsclient-async/nfsclient-async.vcxproj.filters": {
+        "bytes": 516,
+        "sha256": "923f363d047c6f51da0ea27c693c3b560ce0b9f01ad16340efe9f39ba35f9b62"
+      },
+      "win32/nfsclient-bcast/nfsclient-bcast.vcxproj": {
+        "bytes": 8648,
+        "sha256": "4f2b27cd170c85b451fbc2c3c120c0ead3c99deab1fb11188c754d6e8ac6ce41"
+      },
+      "win32/nfsclient-bcast/nfsclient-bcast.vcxproj.filters": {
+        "bytes": 516,
+        "sha256": "ab735847a55ee7085079445fc7236fd8bf8096a4115ed7248edb12b9c69f3faa"
+      },
+      "win32/nfsclient-listservers/nfsclient-listservers.vcxproj": {
+        "bytes": 8598,
+        "sha256": "dc26a69bed3f821223e63ae376d75db72bfc5a55ab3bf6c7c85a3ca30e42a814"
+      },
+      "win32/nfsclient-listservers/nfsclient-listservers.vcxproj.filters": {
+        "bytes": 522,
+        "sha256": "6bb564a999bacd04392f5389c69930963bdca1b0cc75a010172eb0e3b6cca119"
+      },
+      "win32/nfsclient-raw/nfsclient-raw.vcxproj": {
+        "bytes": 8616,
+        "sha256": "0489ef088c69431b22551910a3a906dd67fd6810a37a0ee8457f0c72f35b867e"
+      },
+      "win32/nfsclient-raw/nfsclient-raw.vcxproj.filters": {
+        "bytes": 514,
+        "sha256": "3e775c1fe7bcffaba4dfbc4be0547ea9743028018ec8cd32547ccc6a844c5c59"
+      },
+      "win32/nfsclient-sync/nfsclient-sync.vcxproj": {
+        "bytes": 8591,
+        "sha256": "5c9ebb36b389acec02d0171c588be30723b4b554c538a3ac6777893c7b90f7d5"
+      },
+      "win32/nfsclient-sync/nfsclient-sync.vcxproj.filters": {
+        "bytes": 515,
+        "sha256": "58b8dfd2a2acad6ba2f274e9d9f86be791c5c79e6053a542e12dfda2e04faee0"
+      },
+      "win32/version.rc.template": {
+        "bytes": 2125,
+        "sha256": "e6e4f66ee079a927cbc54aa8b85e4bbc50cb9766ab54ea130b29eff035a0b884"
+      },
+      "win32/win32_compat.c": {
+        "bytes": 5262,
+        "sha256": "73aa4d023091108aba6f94ae22fab7981d02ff85074c3f4fa818dcaaa3867a3f"
+      },
+      "win32/win32_errnowrapper.h": {
+        "bytes": 1458,
+        "sha256": "4cb8b1d3aecd087ad69990c4f0d9e7bf1f2294fe62304e75b1a1617499700d8b"
+      },
+      "win32/win32build.bat": {
+        "bytes": 2996,
+        "sha256": "351b21fbd6210aa20e9eef8c5065e080e4b0d3d3823d428ca0fe86d223758bee"
+      },
+      "win32build.bat": {
+        "bytes": 3540,
+        "sha256": "b4935a824d9cb1b9dafc9fb185a8d87ddb83f450feb6eda09a9c78fd575848f9"
+      }
+    }
+  },
   "sqlite": {
     "url": "https://www.sqlite.org/2026/sqlite-amalgamation-3540100.zip",
     "version": "3.54.1",
