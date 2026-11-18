@@ -10,12 +10,6 @@ _Static_assert(sizeof(struct bw_compressed_stream)<=4096,"Bounded binding metada
 static int latch(struct bw_compressed_stream *p,int error) {
     p->failed=1;p->error=error?error:BW_CSTREAM_STATE;return p->error;
 }
-static int same_stat(const struct smb2_stat_64 *a,const struct smb2_stat_64 *b) {
-    return a->smb2_type==SMB2_TYPE_FILE && b->smb2_type==SMB2_TYPE_FILE &&
-        a->smb2_size==b->smb2_size && a->smb2_ino==b->smb2_ino &&
-        a->smb2_mtime==b->smb2_mtime && a->smb2_mtime_nsec==b->smb2_mtime_nsec &&
-        a->smb2_ctime==b->smb2_ctime && a->smb2_ctime_nsec==b->smb2_ctime_nsec;
-}
 static int binding_valid(const struct bw_source_binding *b) {
     if(!b || strnlen(b->source,sizeof b->source)==sizeof b->source ||
        bw_manifest_validate_path(b->source,strlen(b->source)) ||
@@ -32,9 +26,9 @@ static int stable(struct bw_compressed_stream *p) {
     const struct bw_source_binding *b=p->live_binding;
     if(!binding_valid(b)||memcmp(b->sha256,p->binding.sha256,32)||strcmp(b->source,p->binding.source)||
        strcmp(b->game,p->binding.game)||strcmp(b->title,p->binding.title))return latch(p,BW_CSTREAM_IDENTITY);
-    if(s->smb!=p->smb||s->handle!=p->handle||!s->handle||s->failed||!same_stat(&s->admitted,&p->admitted)||
+    if(s->smb!=p->smb||s->handle!=p->handle||!s->handle||s->failed||!bw_stat_same_file(&s->admitted,&p->admitted)||
        strnlen(s->path,sizeof s->path)==sizeof s->path||strcmp(s->path,p->binding.source)||
-       c->session!=p->session||!c->ready||c->failed||c->source!=s||c->image_size!=p->admitted.smb2_size||
+       c->session!=p->session||!c->ready||c->failed||c->source!=s||c->image_size!=p->admitted.size||
        c->kind!=p->kind||c->has_pfsc!=p->has_pfsc||c->ops.pread!=p->ops.pread||c->ops.generation!=p->ops.generation)
         return latch(p,BW_CONTAINER_STALE);
     if((c->kind==BW_CONTAINER_PFS&&c->filesystem!=&c->outer)||
@@ -110,7 +104,7 @@ int bw_compressed_stream_bind(struct bw_compressed_stream *p,const struct bw_cst
     if(!binding_valid(a->binding)||memcmp(a->binding->sha256,a->expected_binding_sha256,32)||
        strnlen(s->path,sizeof s->path)==sizeof s->path||strcmp(s->path,a->binding->source))return latch(p,BW_CSTREAM_IDENTITY);
     if(!s->smb||!s->handle||s->failed||!c->ready||c->failed||!c->session||c->source!=s||
-       c->image_size!=s->admitted.smb2_size||!c->ops.pread||!c->ops.generation)return latch(p,BW_CONTAINER_STALE);
+       c->image_size!=s->admitted.size||!c->ops.pread||!c->ops.generation)return latch(p,BW_CONTAINER_STALE);
     if(c->kind<BW_CONTAINER_PFS||c->kind>BW_CONTAINER_WRAPPED_EXFAT||
        ((c->kind==BW_CONTAINER_PFSC_PFS||c->kind==BW_CONTAINER_PFSC_EXFAT)?!c->has_pfsc:c->has_pfsc))return latch(p,BW_PFS_UNSUPPORTED);
     if(a->map_size<BW_MANIFEST_HEADER_SIZE||a->map_size>BW_MANIFEST_HEADER_SIZE+(size_t)BW_MANIFEST_MAX_FILES*BW_MANIFEST_RECORD_SIZE+BW_MANIFEST_MAX_PATH_BYTES||

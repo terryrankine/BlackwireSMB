@@ -62,7 +62,7 @@ struct bw_compressed_stream {
     uint8_t map_header[BW_MANIFEST_HEADER_SIZE],map_sha256[32];
     struct smb2_context *smb;
     struct smb2fh *handle;
-    struct smb2_stat_64 admitted;
+    struct bw_stat admitted;
     uint64_t session;
     int kind,has_pfsc;
     struct bw_container_ops ops;

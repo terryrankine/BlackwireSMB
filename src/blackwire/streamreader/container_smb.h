@@ -1,6 +1,7 @@
 #ifndef BW_CONTAINER_SMB_H
 #define BW_CONTAINER_SMB_H
 #include "container_source.h"
+#include "bw_stat.h"
 #include <time.h>
 #include <smb2/smb2.h>
 #include <smb2/libsmb2.h>
@@ -24,7 +25,7 @@ struct bw_container_smb {
     struct smb2_context *smb;
     struct smb2_context **transport_owner;
     struct smb2fh *handle;
-    struct smb2_stat_64 admitted;
+    struct bw_stat admitted;
     char path[1024];
     uint64_t read_calls,read_bytes,generation_checks;
     int failed,last_transport_error;

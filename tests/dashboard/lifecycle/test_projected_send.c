@@ -36,7 +36,7 @@ int main(int argc,char **argv){C(argc==7);int folder=!strcmp(argv[1],"folder"),p
     struct bw_source_smb source={.smb=&context,.deadline=now()+600};struct bw_share_config config={0};strcpy(config.server,"192.0.2.1");strcpy(config.share,"FixtureShare");
     struct bw_provider_binding binding;C(!bw_provider_binding_init(&binding,&config,folder?"fixture":"fixture.ffpfsc","PPSA99001",folder?BW_PROVIDER_FOLDER:BW_PROVIDER_CONTAINER));
     struct bw_container_smb *image=NULL;struct image_source input={.context=&context};
-    if(!folder){load_image(&input,argv[3]);image=calloc(1,sizeof *image);C(image);strcpy(image->path,"fixture.ffpfsc");image->handle=(struct smb2fh *)image;image->admitted.smb2_ino=7;image->admitted.smb2_size=input.size;image->admitted.smb2_mtime=1700000000;
+    if(!folder){load_image(&input,argv[3]);image=calloc(1,sizeof *image);C(image);strcpy(image->path,"fixture.ffpfsc");image->handle=(struct smb2fh *)image;image->admitted.ino=7;image->admitted.size=input.size;image->admitted.mtime=1700000000;
         struct bw_container_ops ops={image_read,image_generation};C(!bw_container_open(&image->container,&ops,&input,input.size));}
     char log[1500];C(snprintf(log,sizeof log,"%s/game.log",argv[4])>0);int logfd=open(log,O_CREAT|O_EXCL|O_WRONLY,0600);C(logfd>=0&&!close(logfd));
     struct bw_native_prepared result={0};struct bw_source_provider provider={0};struct bw_native_send_files send={.data_root=argv[4],.game_log=log,.provider=&provider,.current=current,.opaque=&context,.upgrade_unmapped=unmapped,.upgrade_opaque=&context};

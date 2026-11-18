@@ -36,7 +36,7 @@ static void metadata(struct bw_catalog_item *item,const char *source,const char 
     if(kind==BW_CATALOG_FOLDER){item->boot.size=100;item->param.size=110;}
     if(kind==BW_CATALOG_CONTAINER_READY){
         item->container_kind=BW_CONTAINER_PFSC_PFS;item->container_bytes=4096;item->logical_boot_size=100;
-        item->image.smb2_type=SMB2_TYPE_FILE;item->image.smb2_size=4096;item->image.smb2_ino=42;
+        item->image.type=BW_TP_FILE;item->image.size=4096;item->image.ino=42;
         bw_source_catalog_image_hash(&item->image,item->image_sha256);
     }
 }

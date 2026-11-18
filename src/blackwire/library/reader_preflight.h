@@ -12,7 +12,7 @@ struct bw_native_launch_admission;
  * the reader must separately capture/validate the complete typed claim. */
 struct bw_reader_data_admission {
     struct bw_provider_binding identity;
-    struct smb2_stat_64 image;
+    struct bw_stat image;
     uint8_t map_sha256[32],generation_sha256[32];
     unsigned valid;
     uint8_t *provenance_bytes;

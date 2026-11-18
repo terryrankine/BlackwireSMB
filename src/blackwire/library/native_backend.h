@@ -34,7 +34,7 @@ struct bw_native_prepare_selection {
      * a folder snapshot, byte-verification flag or publication capability. */
     struct bw_provider_binding identity;
     struct bw_source_info boot,param;
-    struct smb2_stat_64 image;
+    struct bw_stat image;
     uint64_t logical_boot_size;
     int container_kind;
     char run[33];

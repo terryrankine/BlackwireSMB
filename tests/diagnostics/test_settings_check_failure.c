@@ -38,7 +38,7 @@ int bw_source_smb_small_file(struct bw_source_smb *s,const char *path,size_t max
 }
 void bw_source_catalog_destroy(struct bw_source_catalog *p){free(p->items);memset(p,0,sizeof *p);}
 int bw_source_catalog_available(const struct bw_catalog_item *p){return p&&(p->state==BW_CATALOG_FOLDER||p->state==BW_CATALOG_CONTAINER_READY);}
-void bw_source_catalog_image_hash(const struct smb2_stat_64 *s,uint8_t hash[32]){(void)s;(void)hash;abort();}
+void bw_source_catalog_image_hash(const struct bw_stat *s,uint8_t hash[32]){(void)s;(void)hash;abort();}
 int bw_source_catalog_binding(struct bw_provider_binding *out,const struct bw_share_config *c,const struct bw_catalog_item *i){(void)out;(void)c;(void)i;abort();}
 #else
 /* Complete production catalog -> discovery -> setup worker failure chain.

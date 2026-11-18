@@ -10,15 +10,9 @@
 #include <string.h>
 #include <time.h>
 
-static int image_same(const struct smb2_stat_64 *a,const struct smb2_stat_64 *b) {
-    return a->smb2_type==SMB2_TYPE_FILE && b->smb2_type==SMB2_TYPE_FILE &&
-        a->smb2_ino==b->smb2_ino && a->smb2_size==b->smb2_size &&
-        a->smb2_mtime==b->smb2_mtime && a->smb2_mtime_nsec==b->smb2_mtime_nsec &&
-        a->smb2_ctime==b->smb2_ctime && a->smb2_ctime_nsec==b->smb2_ctime_nsec;
-}
 /* Exact provider LE metadata domain, not an invented durable receipt. */
 static void reader_image_generation(const struct bw_reader_data_admission *a,uint8_t out[32]) {
-    bw_provider_image_generation(&a->identity,&a->image,a->map_sha256,out);
+    bw_provider_image_generation_stat(&a->identity,&a->image,a->map_sha256,out);
 }
 static int legacy_preflight(const struct bw_reader_preflight *p,struct bw_native_prepared *out) {
     if(p&&p->error)*p->error="Invalid or cancelled launch request";
@@ -310,7 +304,7 @@ int bw_reader_preflight_run(const struct bw_reader_preflight *p,struct bw_native
 static int reader_fail(struct bw_reader_container *p) {if(p)p->failed=1;return -1;}
 static int reader_current(struct bw_reader_container *p) {
     if(!p||!p->ready||p->failed||!p->image||!p->current||p->current(p->opaque)||
-       !image_same(&p->admitted.image,&p->image->admitted)||bw_container_validate(&p->image->container)||p->current(p->opaque)||p->failed)return reader_fail(p);
+       !bw_stat_same_file(&p->admitted.image,&p->image->admitted)||bw_container_validate(&p->image->container)||p->current(p->opaque)||p->failed)return reader_fail(p);
     return 0;
 }
 int bw_reader_container_current(struct bw_reader_container *p) {
@@ -333,7 +327,7 @@ int bw_reader_container_open(struct bw_reader_container *p,struct smb2_context *
     p->admitted=*a;p->map_bytes=map_bytes;p->map_size=map_size;p->current=current;p->opaque=opaque;
     p->image=calloc(1,sizeof *p->image);
     if(!p->image||bw_container_smb_open(p->image,smb,a->identity.binding.source)||current(opaque)||
-       p->failed||!image_same(&a->image,&p->image->admitted)||bw_container_manifest_bind(&p->files,&p->image->container,&map)||current(opaque)||p->failed)goto done;
+       p->failed||!bw_stat_same_file(&a->image,&p->image->admitted)||bw_container_manifest_bind(&p->files,&p->image->container,&map)||current(opaque)||p->failed)goto done;
     p->ready=1;result=reader_current(p);
 done:
     p->busy=0;return result?reader_fail(p):0;

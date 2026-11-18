@@ -27,7 +27,7 @@ struct bw_source_provider {
     struct bw_container_ops image_ops;
     void *image_source;
     struct bw_container_smb *borrowed_image;
-    struct smb2_stat_64 image_generation;
+    struct bw_stat image_generation;
     uint64_t budget;
     int (*current)(void *);
     void *opaque;
