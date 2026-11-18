@@ -786,13 +786,14 @@ static int http_host_allowed(const char *host){
 /* A browser always names the page that sent a POST. Native clients send no
  * Origin, so only a present Origin for another host is refused. */
 static int http_request_refusal(const char *request,const char *method){
-  char host[64]={0},origin[256]={0};const char *line=strstr(request,"\r\n");
-  int http10=line&&line-request>=9&&!memcmp(line-9," HTTP/1.0",9),host_seen=native_header(request,"Host",host,sizeof host);
-  if(host_seen<0||(!host_seen&&!http10))return 400;
-  if(host_seen&&!http_host_allowed(host))return 421;
+  char host[64]={0},origin[256]={0};
+  /* Every client of this port sends Host, HTTP/1.0 ones included. Requiring it
+   * leaves no request that skips the allow-list. */
+  if(native_header(request,"Host",host,sizeof host)!=1)return 400;
+  if(!http_host_allowed(host))return 421;
   if(strcmp(method,"POST"))return 0;
   int origin_seen=native_header(request,"Origin",origin,sizeof origin);if(origin_seen<0)return 400;
-  return origin_seen&&(!host_seen||strncasecmp(origin,"http://",7)||strcasecmp(origin+7,host))?403:0;
+  return origin_seen&&(strncasecmp(origin,"http://",7)||strcasecmp(origin+7,host))?403:0;
 }
 
 #if defined(BW_NATIVE_BACKEND) && defined(BW_HOME_STARTUP)

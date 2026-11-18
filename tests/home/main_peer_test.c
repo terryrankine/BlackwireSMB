@@ -51,13 +51,14 @@ int main(void){
     /* obs-fold continuation lines are refused, not silently skipped. */
     exchange("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Fold: a\r\n b\r\n\r\n",1,response);C(strstr(response,"HTTP/1.0 400 "));
     exchange("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n\tHost: evil.invalid\r\n\r\n",1,response);C(strstr(response,"HTTP/1.0 400 "));
-    exchange("GET / HTTP/1.0\r\n\r\n",1,response);C(strstr(response,"HTTP/1.0 200 ")); /* HTTP/1.0 may omit Host. */
+    exchange("GET / HTTP/1.0\r\n\r\n",1,response);C(strstr(response,"HTTP/1.0 400 ")); /* No version may omit Host. */
+    exchange("GET / HTTP/1.0\r\nHost: 127.0.0.1:5918\r\n\r\n",1,response);C(strstr(response,"HTTP/1.0 200 "));
     /* Cross-origin POST is refused before any handler; absent Origin is native. */
     const char *post="POST /api/refresh HTTP/1.1\r\nHost: %s\r\nContent-Type: application/json\r\nContent-Length: 2\r\n%s\r\n{}";
     const char *refused[]={"Origin: http://evil.invalid\r\n","Origin: null\r\n","Origin: https://127.0.0.1:5918\r\n","Origin: http://127.0.0.1\r\n","Origin: http://127.0.0.1:5918/\r\n","Origin: http://127.0.0.1:5918\r\nOrigin: http://127.0.0.1:5918\r\n"};
     before=normal_requests;
     for(unsigned i=0;i<sizeof refused/sizeof *refused;i++){snprintf(request,sizeof request,post,"127.0.0.1:5918",refused[i]);exchange(request,1,response);C((strstr(response,"HTTP/1.0 403 ")||(i==5&&strstr(response,"HTTP/1.0 400 ")))&&normal_requests==before);}
-    exchange("POST /api/refresh HTTP/1.0\r\nContent-Type: application/json\r\nOrigin: http://127.0.0.1:5918\r\nContent-Length: 2\r\n\r\n{}",1,response);C(strstr(response,"HTTP/1.0 403 ")&&normal_requests==before);
+    exchange("POST /api/refresh HTTP/1.0\r\nContent-Type: application/json\r\nOrigin: http://127.0.0.1:5918\r\nContent-Length: 2\r\n\r\n{}",1,response);C(strstr(response,"HTTP/1.0 400 ")&&normal_requests==before);
     snprintf(request,sizeof request,post,"192.0.2.20:5918","Origin: http://192.0.2.20:5918\r\n");exchange(request,1,response);C(strstr(response,"HTTP/1.0 404 ")&&normal_requests==before+2);
     snprintf(request,sizeof request,post,"127.0.0.1:5918","Origin: HTTP://127.0.0.1:5918\r\n");exchange(request,1,response);C(strstr(response,"HTTP/1.0 404 ")&&normal_requests==before+4);
     snprintf(request,sizeof request,post,"127.0.0.1:5918","");exchange(request,1,response);C(strstr(response,"HTTP/1.0 404 ")&&normal_requests==before+6);
