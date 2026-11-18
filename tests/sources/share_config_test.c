@@ -86,6 +86,22 @@ static void nfs_parse(void){
     C(!ph_encode_share(&c,handoff,&h));C(!strstr(handoff,"path2="));
     bw_share_clear(&c);bw_share_clear(&one);bw_share_clear(&copy);
 }
+/* The real deployment: one image folder, no path2. */
+static void nfs_single_source(void){
+    static const char real[]="transport=nfs\nserver=192.168.11.186\nexport=/volume1/public\npath=emulation/ps5/games/images\nnfs_version=4\nuid=1000\ngid=1000\n";
+    cases++;struct bw_share_config c,one;char out[1024],handoff[1024];size_t n=0,h=0;
+    C(!bw_share_parse(&c,real,strlen(real)));C(c.transport==BW_SHARE_NFS&&!c.nfs_has_path2&&!*c.nfs_path2);
+    C(!strcmp(c.nfs_path,"emulation/ps5/games/images")&&bw_native_setup_config_valid(&c));
+    C(!bw_share_encode(&c,out,sizeof out,&n));C(n==strlen(real)&&!memcmp(out,real,n));
+    C(!strcmp(bw_share_source_name(&c,0),"emulation/ps5/games/images")&&!bw_share_source_name(&c,1));
+    cases++;C(!bw_share_select_source(&one,&c,NULL));C(!strcmp(one.nfs_path,c.nfs_path)&&!one.nfs_has_path2);
+    C(!bw_share_select_source(&one,&c,"emulation/ps5/games/images"));
+    cases++;C(bw_share_select_source(&one,&c,""));cleared(&one,sizeof one);
+    C(bw_share_select_source(&one,&c,"emulation/ps5/games/folders"));cleared(&one,sizeof one);
+    /* With no path2 the handoff is the settings file byte for byte. */
+    cases++;C(!bw_share_select_source(&one,&c,NULL));C(!ph_encode_share(&one,handoff,&h));C(h==strlen(real)&&!memcmp(handoff,real,h));
+    bw_share_clear(&c);bw_share_clear(&one);
+}
 static void nfs_accepted(void){
     static const char *const files[]={
         /* One source at the export root. */
@@ -173,6 +189,6 @@ static void nfs_refused(void){
     bw_share_clear(&c);bw_share_clear(&bad);bw_share_clear(&one);
 }
 int main(void){
-    smb_round_trip();smb_tolerated();smb_refused();nfs_parse();nfs_accepted();nfs_refused();
+    smb_round_trip();smb_tolerated();smb_refused();nfs_parse();nfs_single_source();nfs_accepted();nfs_refused();
     printf("{\"cases\":%u,\"checks\":%u}\n",cases,checks);return 0;
 }

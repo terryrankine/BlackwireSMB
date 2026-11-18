@@ -73,6 +73,9 @@ struct bw_native_backend {
     char home_setup_game[75],home_setup_reason[768];
 #endif
     char server[128],share[128],share2[128],user[128];unsigned password_saved;struct bw_native_backend_ops ops;void *opaque;
+    /* Public NFS settings: transport and nfs_* only. Server, share, user and
+     * password stay empty here. NFS has no secret; uid and gid are shown. */
+    struct bw_share_config nfs_settings;
     struct bw_native_library library;struct bw_native_jobs *jobs;
     int (*settings_idle)(void *,uint32_t);void *settings_idle_owner;
     int (*preparation_idle)(void *,const char[33],const char[33],enum bw_prepare_guard_point);void *preparation_idle_owner;
@@ -650,15 +653,21 @@ done:;
 }
 static int close_game(void *opaque,const char *run){(void)opaque;return bw_native_reader_close(run);}
 #endif
-static int config_equal(const struct bw_share_config *a,const struct bw_share_config *b){return !strcmp(a->server,b->server)&&!strcmp(a->share,b->share)&&!strcmp(a->share2,b->share2)&&!strcmp(a->user,b->user)&&!strcmp(a->password,b->password);}
+static int config_equal(const struct bw_share_config *a,const struct bw_share_config *b){return !strcmp(a->server,b->server)&&!strcmp(a->share,b->share)&&!strcmp(a->share2,b->share2)&&!strcmp(a->user,b->user)&&!strcmp(a->password,b->password)&&
+    a->transport==b->transport&&!strcmp(a->nfs_export,b->nfs_export)&&!strcmp(a->nfs_path,b->nfs_path)&&!strcmp(a->nfs_path2,b->nfs_path2)&&
+    a->nfs_has_path2==b->nfs_has_path2&&a->nfs_version==b->nfs_version&&a->nfs_uid==b->nfs_uid&&a->nfs_gid==b->nfs_gid;}
 static void settings_adopt(struct bw_native_backend *p,int status,const struct bw_share_config *config,const struct bw_setup_generation *generation,int mark_stale){
     int changed=p->settings_known&&(p->settings_status!=status||!bw_native_setup_generation_equal(&p->settings_generation,generation));
     if(!p->settings_known)p->settings_revision=1;else if(changed){if(p->settings_revision<UINT32_MAX)p->settings_revision++;else p->settings_enabled=0;}
     p->settings_known=1;p->settings_status=status;p->settings_generation=*generation;
     if(status==BW_SETUP_VALID){memcpy(p->server,config->server,sizeof p->server);memcpy(p->share,config->share,sizeof p->share);
         memcpy(p->share2,config->share2,sizeof p->share2);
+        {const struct bw_share_config *from=config;struct bw_share_config *to=&p->nfs_settings;memset(to,0,sizeof *to);
+        to->transport=from->transport;to->nfs_has_path2=from->nfs_has_path2;to->nfs_version=from->nfs_version;to->nfs_uid=from->nfs_uid;to->nfs_gid=from->nfs_gid;
+        memcpy(to->nfs_export,from->nfs_export,sizeof to->nfs_export);memcpy(to->nfs_path,from->nfs_path,sizeof to->nfs_path);memcpy(to->nfs_path2,from->nfs_path2,sizeof to->nfs_path2);}
         memcpy(p->user,config->user,sizeof p->user);p->password_saved=config->password[0]!=0;}
-    else{memset(p->server,0,sizeof p->server);memset(p->share,0,sizeof p->share);memset(p->share2,0,sizeof p->share2);memset(p->user,0,sizeof p->user);p->password_saved=0;}
+    else{memset(p->server,0,sizeof p->server);memset(p->share,0,sizeof p->share);memset(p->share2,0,sizeof p->share2);memset(p->user,0,sizeof p->user);p->password_saved=0;
+        memset(&p->nfs_settings,0,sizeof p->nfs_settings);}
     if(changed&&mark_stale&&p->generation){p->phase=BACKEND_CONFIG_CHANGED;p->stale=p->library.catalog.count>0;}
 }
 static void settings_sync(struct bw_native_backend *p){
@@ -681,7 +690,7 @@ static int catalog_order(const struct bw_catalog_item *a,const struct bw_catalog
     int order=source_compare(a->source,b->source);return order?order:source_compare(a->source_share,b->source_share);
 }
 static size_t catalog_selected(const struct bw_native_backend *p,const struct bw_native_send_request *request){
-    struct bw_share_config config={0};memcpy(config.server,p->server,sizeof config.server);
+    struct bw_share_config config=p->nfs_settings;memcpy(config.server,p->server,sizeof config.server);
     memcpy(config.share,p->share,sizeof config.share);memcpy(config.share2,p->share2,sizeof config.share2);
     size_t found=p->library.catalog.count;unsigned matches=0;
     for(size_t i=0;i<p->library.catalog.count;i++){
@@ -909,7 +918,10 @@ static void *scan(void *opaque){
         int loaded=p->settings_enabled?p->ops.read_settings(p->opaque,&config,&before_generation):p->ops.load(p->opaque,&config);
         if(loaded||!valid_config(&config))goto done;
         cp_sha_bytes(&config,sizeof config,before_digest);
-        if(!p->settings_enabled){pthread_mutex_lock(&p->lock);memcpy(p->server,config.server,sizeof p->server);memcpy(p->share,config.share,sizeof p->share);memcpy(p->share2,config.share2,sizeof p->share2);pthread_mutex_unlock(&p->lock);}
+        if(!p->settings_enabled){pthread_mutex_lock(&p->lock);memcpy(p->server,config.server,sizeof p->server);memcpy(p->share,config.share,sizeof p->share);memcpy(p->share2,config.share2,sizeof p->share2);
+            {const struct bw_share_config *from=&config;struct bw_share_config *to=&p->nfs_settings;memset(to,0,sizeof *to);
+        to->transport=from->transport;to->nfs_has_path2=from->nfs_has_path2;to->nfs_version=from->nfs_version;to->nfs_uid=from->nfs_uid;to->nfs_gid=from->nfs_gid;
+        memcpy(to->nfs_export,from->nfs_export,sizeof to->nfs_export);memcpy(to->nfs_path,from->nfs_path,sizeof to->nfs_path);memcpy(to->nfs_path2,from->nfs_path2,sizeof to->nfs_path2);}pthread_mutex_unlock(&p->lock);}
     }
     phase=BACKEND_FAILED;
     if(p->ops.discover(p->opaque,&config,&next)||!valid_library(&next)){error=SETUP_CONNECTION_ERROR;goto done;}
@@ -1132,7 +1144,7 @@ static void prepared_absence_poll(struct bw_native_backend *p){
     int length=snprintf(parent,sizeof parent,"%s/games",backend_data_root);
     if(length<0||(size_t)length>=sizeof parent||!realpath(parent,resolved)||strcmp(parent,resolved)||
        lstat(parent,&before)||!S_ISDIR(before.st_mode))return;
-    struct bw_share_config connection={0};
+    struct bw_share_config connection=p->nfs_settings;
     snprintf(connection.server,sizeof connection.server,"%s",p->server);
     snprintf(connection.share,sizeof connection.share,"%s",p->share);
     snprintf(connection.share2,sizeof connection.share2,"%s",p->share2);
@@ -1179,7 +1191,12 @@ static int state(struct bw_native_backend *p,struct bw_native_response *out){
     }
     bw_json_text(&json,"{\"backend\":\"native\",\"settings\":{\"gamesFolder\":\"\",\"ps5Address\":\"\",\"server\":");bw_json_string(&json,p->server);
     bw_json_text(&json,",\"share\":");bw_json_string(&json,p->share);bw_json_text(&json,",\"share2\":");bw_json_string(&json,p->share2);bw_json_text(&json,",\"user\":");bw_json_string(&json,p->user);
-    bw_json_format(&json,",\"passwordSaved\":%s},\"pc\":{\"address\":",p->password_saved?"true":"false");bw_json_string(&json,p->server);
+    bw_json_format(&json,",\"passwordSaved\":%s,\"transport\":\"%s\",\"nfsExport\":",p->password_saved?"true":"false",p->nfs_settings.transport==BW_SHARE_NFS?"nfs":"smb");
+    bw_json_string(&json,p->nfs_settings.nfs_export);bw_json_text(&json,",\"nfsPath\":");bw_json_string(&json,p->nfs_settings.nfs_path);bw_json_text(&json,",\"nfsPath2\":");
+    if(p->nfs_settings.nfs_has_path2)bw_json_string(&json,p->nfs_settings.nfs_path2);else bw_json_text(&json,"null");
+    if(p->nfs_settings.transport==BW_SHARE_NFS)bw_json_format(&json,",\"nfsVersion\":%u,\"nfsUid\":%lu,\"nfsGid\":%lu",p->nfs_settings.nfs_version,(unsigned long)p->nfs_settings.nfs_uid,(unsigned long)p->nfs_settings.nfs_gid);
+    else bw_json_text(&json,",\"nfsVersion\":null,\"nfsUid\":null,\"nfsGid\":null");
+    bw_json_text(&json,"},\"pc\":{\"address\":");bw_json_string(&json,p->server);
     bw_json_format(&json,"},\"share\":{\"shared\":%s,\"name\":",p->phase==BACKEND_READY?"true":"false");bw_json_string(&json,p->share);
     bw_json_text(&json,"},\"ps5\":{\"reachable\":true,\"fileManager\":false,\"payloadManager\":false},\"blackwire\":\"running\",\"stream\":{\"phase\":");
     bw_json_string(&json,*p->playing.phase?p->playing.phase:"unverified");bw_json_text(&json,",\"message\":");bw_json_string(&json,*p->playing.message?p->playing.message:"Game session status has not been checked.");
@@ -1213,13 +1230,13 @@ static int state(struct bw_native_backend *p,struct bw_native_response *out){
     bw_json_string(&json,!p->settings_known?"unobserved":p->settings_status==BW_SETUP_VALID?"valid":p->settings_status==BW_SETUP_MISSING?"missing":p->settings_status==BW_SETUP_INVALID?"invalid":"unavailable");
     int editable=p->settings_enabled&&p->settings_known&&p->settings_status>=0&&!p->active&&!p->setup_blocked&&!p->control_release_unknown&&!p->removing.unknown;
     bw_json_format(&json,",\"editable\":%s,\"supported\":%s,\"busy\":%s,\"configured\":%s,\"hasSavedCredentials\":%s,\"revision\":%u,\"operation\":%u,\"phase\":",editable?"true":"false",p->settings_enabled?"true":"false",p->active&&p->worker_kind==WORK_SETUP?"true":"false",
-        p->settings_enabled?p->settings_known&&p->settings_status==BW_SETUP_VALID?"true":"false":*p->server&&*p->share?"true":"false",p->settings_enabled&&p->settings_known&&p->settings_status==BW_SETUP_VALID?"true":"false",p->settings_revision,p->setup_operation);
+        p->settings_enabled?p->settings_known&&p->settings_status==BW_SETUP_VALID?"true":"false":*p->server&&(*p->share||p->nfs_settings.transport==BW_SHARE_NFS)?"true":"false",p->settings_enabled&&p->settings_known&&p->settings_status==BW_SETUP_VALID&&p->nfs_settings.transport==BW_SHARE_SMB?"true":"false",p->settings_revision,p->setup_operation);
     bw_json_string(&json,setup_phase_name(p->setup_phase));bw_json_text(&json,",\"token\":");bw_json_string(&json,p->setup_token);
     bw_json_text(&json,",\"checks\":[],\"failure\":");setup_failure_json(&json,p);bw_json_text(&json,"},\"library\":{\"phase\":");bw_json_string(&json,phase_name(p->phase));
     bw_json_format(&json,",\"generation\":%llu,\"stale\":%s,\"items\":%zu,\"collections\":%u,\"entries\":%u,\"unsearched\":%u,\"coverBytes\":%zu,\"coverLimit\":%u,\"contentBytes\":%llu,\"requests\":%u,\"containerCandidates\":%u,\"containersValidated\":%u,\"containersRejected\":%u},\"games\":[",
         (unsigned long long)p->generation,p->stale?"true":"false",visible_count,p->library.catalog.collections,p->library.catalog.entries,p->library.catalog.unsearched,
         p->library.cover_bytes,BW_NATIVE_COVER_LIMIT,(unsigned long long)p->library.content_bytes,p->library.requests,container_candidates,containers_validated,containers_rejected);
-    struct bw_share_config public_binding_connection={0};
+    struct bw_share_config public_binding_connection=p->nfs_settings;
     snprintf(public_binding_connection.server,sizeof public_binding_connection.server,"%s",p->server);
     snprintf(public_binding_connection.share,sizeof public_binding_connection.share,"%s",p->share);
     snprintf(public_binding_connection.share2,sizeof public_binding_connection.share2,"%s",p->share2);
@@ -1680,11 +1697,11 @@ static int setup(struct bw_native_backend *p,const void *body,size_t size,const 
     settings_adopt(p,loaded,&old,&generation,1);
     if(request.revision!=p->settings_revision){status=409;reply="{\"error\":\"Saved settings changed. Refresh before saving\"}";goto done;}
     if(request.keep_credentials){
-        if(loaded!=BW_SETUP_VALID||strcmp(request.values.server,old.server)){reply="{\"error\":\"Enter sign-in details when connecting to a different PC\"}";goto done;}
+        if(loaded!=BW_SETUP_VALID||old.transport!=BW_SHARE_SMB||strcmp(request.values.server,old.server)){reply="{\"error\":\"Enter sign-in details when connecting to a different PC\"}";goto done;}
         memcpy(request.values.user,old.user,sizeof old.user);memcpy(request.values.password,old.password,sizeof old.password);
     }
-    if(!request.share2_present&&loaded==BW_SETUP_VALID)memcpy(request.values.share2,old.share2,sizeof old.share2);
-    if(!valid_config(&request.values))goto done;
+    if(request.values.transport==BW_SHARE_SMB&&old.transport==BW_SHARE_SMB&&!request.share2_present&&loaded==BW_SETUP_VALID)memcpy(request.values.share2,old.share2,sizeof old.share2);
+    if(!valid_config(&request.values)){if(request.values.transport==BW_SHARE_NFS)reply="{\"error\":\"Enter a valid NFS server, export path, folders, version and user IDs\"}";goto done;}
     if(p->setup_operation==UINT32_MAX){status=503;reply="{\"error\":\"Reopen Blackwire before another connection check\"}";goto done;}
     if(p->joinable){if(pthread_join(p->worker,NULL)){status=503;reply="{\"error\":\"The prior connection worker needs a fresh check\"}";goto done;}p->joinable=0;}
     p->pending.config=request.values;p->pending.expected=generation;p->pending.unchanged=loaded==BW_SETUP_VALID&&config_equal(&old,&request.values);

@@ -216,13 +216,65 @@ static void setup_late_checks(void){
     setup_editable(p,0);RCHECK(setup_post(p,"FixtureShare-Checkpoint")==409&&setup_saves==saves);setup_checkpoint=NULL;
     RCHECK(!bw_native_jobs_destroy(p->jobs));RCHECK(!pthread_mutex_destroy(&p->dispatch_lock)&&!pthread_mutex_destroy(&p->lock));free(p);
 }
+static int setup_post_body(struct bw_native_backend *p,const char *body,const char *token){
+    struct bw_native_response response={0};RCHECK(!bw_native_backend_handle_authenticated(p,"POST","/api/setup",body,strlen(body),token,&response));int status=response.status;bw_native_response_clear(&response);return status;
+}
+static void setup_nfs_checks(void){
+    /* NFS settings through the actual POST /api/setup and GET /api/state, with the same token gate. */
+    struct bw_native_backend *p=calloc(1,sizeof *p);RCHECK(p&&!pthread_mutex_init(&p->lock,NULL)&&!pthread_mutex_init(&p->dispatch_lock,NULL));setup_fixture(p);
+    p->phase=BACKEND_READY;p->settings_revision=2;strcpy(p->setup_token,"cccccccccccccccccccccccccccccccc");
+    struct bw_share_config before=release_config;struct bw_setup_generation before_generation=release_generation;unsigned saves=setup_saves;char body[1024];
+    const char *nfs="\"transport\":\"nfs\",\"server\":\"192.0.2.1\",\"nfsExport\":\"/volume1/public\",\"nfsPath\":\"emulation/ps5/games/folders\","
+        "\"nfsPath2\":\"emulation/ps5/games/images\",\"nfsVersion\":4,\"nfsUid\":1000,\"nfsGid\":1000";
+    const char *refused[]={",\"share\":\"Games\"",",\"smbUser\":\"terry\"",",\"smbPassword\":\"x\"",",\"share2\":\"x\"",",\"keepCredentials\":true",
+        ",\"nfsPath\":\"x\"",",\"transport\":\"smb\"",",\"extra\":1"};
+    for(size_t i=0;i<sizeof refused/sizeof *refused;i++){
+        snprintf(body,sizeof body,"{%s,\"revision\":%u%s}",nfs,p->settings_revision,refused[i]);
+        RCHECK(setup_post_body(p,body,p->setup_token)==400&&setup_saves==saves&&!p->active);
+    }
+    const char *invalid[]={"\"nfsExport\":\"volume1\"","\"nfsExport\":\"/a/../b\"","\"nfsPath\":\"/games\"","\"nfsPath\":\"a\\\\b\"","\"nfsPath\":\"emulation/ps5/games/images\"",
+        "\"nfsVersion\":2","\"nfsUid\":4294967295","\"nfsGid\":\"1\""};
+    for(size_t i=0;i<sizeof invalid/sizeof *invalid;i++){
+        snprintf(body,sizeof body,"{\"transport\":\"nfs\",\"server\":\"192.0.2.1\",\"nfsExport\":\"/v\",\"nfsPath2\":\"emulation/ps5/games/images\",\"nfsVersion\":3,\"nfsUid\":1,\"nfsGid\":1,\"revision\":%u}",p->settings_revision);
+        /* Replace one field: keys are unique, so drop the default and append the bad value. */
+        char key[32];const char *colon=strchr(invalid[i],':');RCHECK(colon&&(size_t)(colon-invalid[i])<sizeof key);
+        memcpy(key,invalid[i],(size_t)(colon-invalid[i]));key[colon-invalid[i]]=0;char *at=strstr(body,key);
+        if(at){char *end=strchr(at,',');RCHECK(end);memmove(at,end+1,strlen(end+1)+1);}
+        size_t n=strlen(body);RCHECK(n+strlen(invalid[i])+2<sizeof body);body[n-1]=',';strcpy(body+n,invalid[i]);strcat(body,"}");
+        RCHECK(setup_post_body(p,body,p->setup_token)==400&&setup_saves==saves&&!p->active);
+    }
+    snprintf(body,sizeof body,"{%s,\"revision\":%u}",nfs,p->settings_revision);
+    RCHECK(setup_post_body(p,body,"dddddddddddddddddddddddddddddddd")==403&&setup_saves==saves);
+    RCHECK(setup_post_body(p,body,p->setup_token)==202&&p->joinable);RCHECK(!pthread_join(p->worker,NULL));p->joinable=0;
+    RCHECK(setup_saves==saves+1&&!p->active&&release_config.transport==BW_SHARE_NFS&&!strcmp(release_config.nfs_export,"/volume1/public")&&
+        !strcmp(release_config.nfs_path,"emulation/ps5/games/folders")&&release_config.nfs_has_path2&&!strcmp(release_config.nfs_path2,"emulation/ps5/games/images")&&
+        release_config.nfs_version==4&&release_config.nfs_uid==1000&&release_config.nfs_gid==1000&&!*release_config.share&&!*release_config.user&&!*release_config.password);
+    struct bw_native_response response={0};RCHECK(!bw_native_backend_handle_authenticated(p,"GET","/api/state",NULL,0,NULL,&response)&&response.status==200);
+    RCHECK(strstr(response.bytes,"\"server\":\"192.0.2.1\",\"share\":\"\",\"share2\":\"\",\"user\":\"\",\"passwordSaved\":false,\"transport\":\"nfs\",\"nfsExport\":\"/volume1/public\","
+        "\"nfsPath\":\"emulation/ps5/games/folders\",\"nfsPath2\":\"emulation/ps5/games/images\",\"nfsVersion\":4,\"nfsUid\":1000,\"nfsGid\":1000}"));
+    bw_native_response_clear(&response);
+    /* Saved NFS has no sign-in to keep. */
+    snprintf(body,sizeof body,"{\"server\":\"192.0.2.1\",\"share\":\"Games\",\"revision\":%u,\"keepCredentials\":true}",p->settings_revision);
+    RCHECK(setup_post_body(p,body,p->setup_token)==400&&setup_saves==saves+1);
+    /* The real deployment: one image folder and no second source. */
+    snprintf(body,sizeof body,"{\"transport\":\"nfs\",\"server\":\"192.168.11.186\",\"nfsExport\":\"/volume1/public\",\"nfsPath\":\"emulation/ps5/games/images\","
+        "\"nfsVersion\":4,\"nfsUid\":1000,\"nfsGid\":1000,\"revision\":%u}",p->settings_revision);
+    RCHECK(setup_post_body(p,body,p->setup_token)==202&&p->joinable);RCHECK(!pthread_join(p->worker,NULL));p->joinable=0;
+    RCHECK(setup_saves==saves+2&&release_config.transport==BW_SHARE_NFS&&!release_config.nfs_has_path2&&!*release_config.nfs_path2&&
+        !strcmp(release_config.nfs_path,"emulation/ps5/games/images")&&!strcmp(release_config.server,"192.168.11.186"));
+    RCHECK(!bw_native_backend_handle_authenticated(p,"GET","/api/state",NULL,0,NULL,&response)&&response.status==200);
+    RCHECK(strstr(response.bytes,"\"transport\":\"nfs\",\"nfsExport\":\"/volume1/public\",\"nfsPath\":\"emulation/ps5/games/images\",\"nfsPath2\":null,\"nfsVersion\":4"));
+    bw_native_response_clear(&response);
+    release_config=before;release_generation=before_generation;
+    RCHECK(!bw_native_jobs_destroy(p->jobs));RCHECK(!pthread_mutex_destroy(&p->dispatch_lock)&&!pthread_mutex_destroy(&p->lock));free(p);
+}
 static void setup_after_removal(struct bw_native_backend *p,unsigned unknown){
     if(setup_checks_done)return;setup_checks_done=1;setup_fixture(p);setup_editable(p,!unknown);
     unsigned operation=p->setup_operation,saves=setup_saves,discovers=setup_discovers;
     int status=setup_post(p,"FixtureShare-Checked");
     if(unknown){RCHECK(status==409&&!p->active&&p->setup_operation==operation&&setup_saves==saves&&setup_discovers==discovers&&(p->control_release_unknown||p->removing.unknown));setup_editable(p,0);}
     else{RCHECK(status==202&&p->joinable);RCHECK(!pthread_join(p->worker,NULL));p->joinable=0;
-        RCHECK(setup_discovers==discovers+1&&setup_saves==saves+1&&!p->active&&!p->control_release_unknown&&!strcmp(release_config.share,"FixtureShare-Checked"));setup_editable(p,1);setup_late_checks();}
+        RCHECK(setup_discovers==discovers+1&&setup_saves==saves+1&&!p->active&&!p->control_release_unknown&&!strcmp(release_config.share,"FixtureShare-Checked"));setup_editable(p,1);setup_late_checks();setup_nfs_checks();}
     RCHECK(!bw_native_jobs_destroy(p->jobs));p->jobs=NULL;
 }
 static int release_normal(void *unused,const struct bw_native_removal_selection *selected,int (*guard)(void *),void *opaque,void (*observe)(void *,const struct bw_game_uninstall_progress *),void *observer,struct bw_game_uninstall_result *out){

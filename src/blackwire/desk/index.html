@@ -203,9 +203,16 @@
   <p>The PS5 reads your games from up to two shared folders on the same PC.</p>
   <p class="conn-state" id="settingsConnection"><span class="dot" id="settingsDot"></span><span id="savedConnectionStatus">Connection status unavailable</span></p>
   <form id="setup" autocomplete="off">
-    <div class="field" id="nativeServerField"><label for="server">PC address</label><input id="server" autocomplete="off" spellcheck="false" disabled></div>
+    <div class="field" id="transportField"><label for="transport">Connection type</label><select id="transport" disabled><option value="smb">SMB shared folder</option><option value="nfs">NFS export</option></select></div>
+    <div class="field" id="nativeServerField"><label for="server" id="serverLabel">PC address</label><input id="server" autocomplete="off" spellcheck="false" disabled></div>
     <div class="field" id="nativeShareField"><label for="shareName">Shared folder name</label><input id="shareName" autocomplete="off" spellcheck="false" disabled></div>
     <div class="field" id="nativeShare2Field"><label for="shareName2">Second shared folder (optional)</label><input id="shareName2" autocomplete="off" spellcheck="false" disabled><small>Uses the same PC and sign-in details. Leave blank to use one folder.</small></div>
+    <div class="field" id="nfsExportField" hidden><label for="nfsExport">Export path</label><input id="nfsExport" autocomplete="off" spellcheck="false" placeholder="/volume1/public" disabled><small>The path the server exports, starting with /. Names are case-sensitive.</small></div>
+    <div class="field" id="nfsPathField" hidden><label for="nfsPath">Games folder in the export (optional)</label><input id="nfsPath" autocomplete="off" spellcheck="false" placeholder="emulation/ps5/games/folders" disabled><small>Leave blank to use the whole export.</small></div>
+    <div class="field" id="nfsPath2Field" hidden><label for="nfsPath2">Second games folder (optional)</label><input id="nfsPath2" autocomplete="off" spellcheck="false" placeholder="emulation/ps5/games/images" disabled><small>In the same export. Leave blank to use one folder.</small></div>
+    <div class="field" id="nfsVersionField" hidden><label for="nfsVersion">NFS version</label><select id="nfsVersion" disabled><option value="3">3</option><option value="4">4 (port 2049 only)</option></select></div>
+    <div class="field" id="nfsUidField" hidden><label for="nfsUid">User ID (uid)</label><input id="nfsUid" inputmode="numeric" autocomplete="off" spellcheck="false" disabled><small>The server trusts this ID. Export read-only and allow only the console address.</small></div>
+    <div class="field" id="nfsGidField" hidden><label for="nfsGid">Group ID (gid)</label><input id="nfsGid" inputmode="numeric" autocomplete="off" spellcheck="false" disabled></div>
     <div class="field" id="smbUserField"><label for="smbUser" id="smbUserLabel">Windows username</label><input id="smbUser" autocomplete="off" spellcheck="false" disabled></div>
     <div class="field" id="smbPasswordField"><label for="smbPassword" id="smbPasswordLabel">Password</label>
       <div class="pw"><input id="smbPassword" type="password" autocomplete="off" disabled><button type="button" class="link" id="pwToggle" aria-pressed="false">Show</button></div>
@@ -253,13 +260,19 @@
       function activeJobs(state) {
         return (state.jobs || []).filter(function (job) { return job.state === "queued" || job.state === "running"; });
       }
+      function nfsFolder(settings,path) {
+        var root=String(settings.nfsExport || "");
+        return settings.server + ":" + root + (path ? (root === "/" ? "" : "/") + path : "");
+      }
       function connection(state) {
         state=state || {};
         var confirmed=state.backend === "native", settings=state.settings || {}, library=state.library || {};
         var configured=confirmed && (state.setup || {}).configured === true;
         var online=confirmed && library.phase === "ready" && !library.stale;
+        var nfs=settings.transport === "nfs";
         return { native:confirmed, configured:configured, online:online,
-          folder:confirmed && settings.server && settings.share ? "\\\\" + settings.server + "\\" + settings.share + (settings.share2 ? " + \\\\" + settings.server + "\\" + settings.share2 : "") : "",
+          folder:confirmed && nfs && settings.server && settings.nfsExport ? nfsFolder(settings,settings.nfsPath) + (typeof settings.nfsPath2 === "string" ? " + " + nfsFolder(settings,settings.nfsPath2) : "")
+            : confirmed && !nfs && settings.server && settings.share ? "\\\\" + settings.server + "\\" + settings.share + (settings.share2 ? " + \\\\" + settings.server + "\\" + settings.share2 : "") : "",
           label:!confirmed ? "Console status unconfirmed" : (state.setup || {}).busy ? "Checking PC connection" : library.phase === "scanning" ? "Reading PC library" : online ? "PC share connected" : "PC share needs attention" };
       }
       function readState(response) {
@@ -582,10 +595,30 @@
           }
         };
       }
+      function nfsSetupBody(setup,fields) {
+        var server=String(fields.server || "").trim(), root=String(fields.nfsExport || "").trim();
+        var path=String(fields.nfsPath || "").trim(), path2=String(fields.nfsPath2 || "").trim();
+        if (!server || !root) throw new Error("Enter the NFS server address and export path.");
+        if (root.charAt(0) !== "/") throw new Error("Enter the export path starting with /.");
+        if (path.charAt(0) === "/" || path2.charAt(0) === "/") throw new Error("Enter games folders inside the export, without a leading /.");
+        if (path2 && path2 === path) throw new Error("Choose two different folders, or leave the second folder blank.");
+        function id(value,label) {
+          value=String(value === undefined || value === null ? "" : value).trim();
+          if (!/^(0|[1-9][0-9]{0,9})$/.test(value) || Number(value) > 4294967294) throw new Error("Enter the " + label + " as a whole number.");
+          return Number(value);
+        }
+        var version=String(fields.nfsVersion || "3");
+        if (version !== "3" && version !== "4") throw new Error("Choose NFS version 3 or 4.");
+        var body={transport:"nfs",server:server,nfsExport:root,nfsPath:path,nfsVersion:Number(version),nfsUid:id(fields.nfsUid,"user ID"),nfsGid:id(fields.nfsGid,"group ID"),
+          revision:typeof fields.revision === "number" ? fields.revision : setup.revision};
+        if (path2) body.nfsPath2=path2;
+        return body;
+      }
       function setupBody(state,fields) {
         if (!state || state.backend !== "native") throw new Error("Refresh the console status before saving connection settings.");
         var setup=state.setup || {}, settings=state.settings || {};
         if (!setup.editable) throw new Error(setup.message || "Wait for the current connection check.");
+        if (fields.transport === "nfs") return nfsSetupBody(setup,fields);
         var server=String(fields.server || "").trim(), share=String(fields.share || "").trim();
         if (!server || !share) throw new Error("Enter the PC address and shared folder name.");
         var keep=fields.keep === true && setup.hasSavedCredentials === true && server === settings.server &&
@@ -651,7 +684,7 @@
           if (found.length !== 1) return fail(expectedBinding && candidates.length ? "This dashboard entry belongs to a different PC source or connection. Open the game from Blackwire and recreate its dashboard entry." : "The dashboard entry's exact PC source is unavailable. Check the shared folder.");
           var game=found[0];
           if (expectedBinding && game.sourceBinding !== expectedBinding) return fail("This dashboard entry belongs to a different PC source or connection. Open the game from Blackwire and recreate its dashboard entry.");
-          if (pin && (pin.title !== game.titleId || pin.binding !== game.sourceBinding || pin.revision !== setup.revision || pin.server !== settings.server || pin.share !== settings.share || pin.share2 !== settings.share2)) return fail("The selected source or PC connection changed. Open this game again from the library.");
+          if (pin && (pin.title !== game.titleId || pin.binding !== game.sourceBinding || pin.revision !== setup.revision || pin.server !== settings.server || pin.share !== settings.share || pin.share2 !== settings.share2 || pin.transport !== settings.transport || pin.nfsExport !== settings.nfsExport || pin.nfsPath !== settings.nfsPath || pin.nfsPath2 !== settings.nfsPath2)) return fail("The selected source or PC connection changed. Open this game again from the library.");
           var session=state.stream || {};
           if (active(session)) {
             if (session.game === source && (!session.sourceBinding || !game.sourceBinding || session.sourceBinding === game.sourceBinding)) {phase="done";return null;}
@@ -665,7 +698,7 @@
             if (jobs[0].state !== "done") return fail(jobs[0].message || "Startup preparation failed. Check Blackwire before trying again.");
             if (!game.prepared || !game.canPlay) return fail(game.playReason || "Preparation finished, but playback is unavailable for this source.");
           } else if (activeJobs(state).length) return fail("Wait for the current preparation before using this dashboard entry.");
-          if (!pin) pin={title:game.titleId,binding:game.sourceBinding,revision:setup.revision,server:settings.server,share:settings.share,share2:settings.share2};
+          if (!pin) pin={title:game.titleId,binding:game.sourceBinding,revision:setup.revision,server:settings.server,share:settings.share,share2:settings.share2,transport:settings.transport,nfsExport:settings.nfsExport,nfsPath:settings.nfsPath,nfsPath2:settings.nfsPath2};
           try {
             if (game.canStart === true) return request("/api/start",state);
             if (game.canPlay) return request("/api/play",state);
@@ -851,6 +884,9 @@
       var shareName = document.getElementById("shareName");
       var shareName2 = document.getElementById("shareName2");
       var keepCredentials = document.getElementById("keepCredentials");
+      var transport = document.getElementById("transport");
+      var nfsExport = document.getElementById("nfsExport"), nfsPath = document.getElementById("nfsPath"), nfsPath2 = document.getElementById("nfsPath2");
+      var nfsVersion = document.getElementById("nfsVersion"), nfsUid = document.getElementById("nfsUid"), nfsGid = document.getElementById("nfsGid");
       var note = document.getElementById("note");
       var games = document.getElementById("games");
       var selectedGame = document.getElementById("selectedGame");
@@ -1120,7 +1156,7 @@
         var help=!document.getElementById("helpOverlay").hidden;
         if(help)return [document.getElementById("closeHelp")];
         if(!document.getElementById("setupPanel").open)return null;
-        return ["closeSetup","server","shareName","shareName2","smbUser","smbPassword","pwToggle","keepCredentials","saveSetup","reloadSetup"].map(function (id) {return document.getElementById(id);}).filter(function (button) {
+        return ["closeSetup","transport","server","shareName","shareName2","nfsExport","nfsPath","nfsPath2","nfsVersion","nfsUid","nfsGid","smbUser","smbPassword","pwToggle","keepCredentials","saveSetup","reloadSetup"].map(function (id) {return document.getElementById(id);}).filter(function (button) {
           return !button.disabled && !button.hidden && (button !== keepCredentials || !document.getElementById("keepCredentialsField").hidden);
         });
       }
@@ -1297,15 +1333,21 @@
           if (saveResult === "saved") {settingsDirty=false;notice=null;loadSaved=true;}
           else notice={text:setup.message || "Connection check failed.",kind:"bad"};
         }
-        var saved=statusFresh && value.backend === "native" && setup.configured === true && typeof settings.server === "string" && !!settings.server && typeof settings.share === "string" && !!settings.share;
+        var savedNfs=settings.transport === "nfs";
+        var saved=statusFresh && value.backend === "native" && setup.configured === true && typeof settings.server === "string" && !!settings.server &&
+          (savedNfs ? typeof settings.nfsExport === "string" && !!settings.nfsExport : typeof settings.share === "string" && !!settings.share);
         if(loadSaved && saved) {
-          server.value=settings.server;shareName.value=settings.share;shareName2.value=settings.share2 || "";smbUser.value=typeof settings.user === "string"?settings.user:"";
-          smbPassword.value="";keepCredentials.checked=setup.hasSavedCredentials === true;
+          transport.value=savedNfs?"nfs":"smb";server.value=settings.server;
+          shareName.value=savedNfs?"":settings.share;shareName2.value=savedNfs?"":settings.share2 || "";smbUser.value=!savedNfs && typeof settings.user === "string"?settings.user:"";
+          nfsExport.value=savedNfs?settings.nfsExport:"";nfsPath.value=savedNfs?settings.nfsPath || "":"";nfsPath2.value=savedNfs && typeof settings.nfsPath2 === "string"?settings.nfsPath2:"";
+          nfsVersion.value=savedNfs && settings.nfsVersion === 4?"4":"3";
+          nfsUid.value=savedNfs && typeof settings.nfsUid === "number"?String(settings.nfsUid):"";nfsGid.value=savedNfs && typeof settings.nfsGid === "number"?String(settings.nfsGid):"";
+          smbPassword.value="";keepCredentials.checked=!savedNfs && setup.hasSavedCredentials === true;
         }
         text(document.getElementById("savedServer"),saved?settings.server:"Not set");
-        text(document.getElementById("savedShare"),saved?settings.share+(settings.share2 ? " + "+settings.share2 : ""):"Not set");
-        text(document.getElementById("savedUser"),!saved?"Not set":typeof settings.user === "string"?(settings.user || "No username saved"):"Saved account");
-        text(document.getElementById("savedPassword"),!saved?"Not set":settings.passwordSaved === true?"********":settings.passwordSaved === false?"No password saved":"Saved sign-in hidden");
+        text(document.getElementById("savedShare"),!saved?"Not set":savedNfs?link.folder:settings.share+(settings.share2 ? " + "+settings.share2 : ""));
+        text(document.getElementById("savedUser"),!saved?"Not set":savedNfs?"uid " + settings.nfsUid + ", gid " + settings.nfsGid:typeof settings.user === "string"?(settings.user || "No username saved"):"Saved account");
+        text(document.getElementById("savedPassword"),!saved?"Not set":savedNfs?"Not used for NFS":settings.passwordSaved === true?"********":settings.passwordSaved === false?"No password saved":"Saved sign-in hidden");
         var savedStatus=!statusFresh?"Connection status unavailable":setup.busy || setupPosting?"Checking connection…":setup.phase === "error" || setup.phase === "unconfirmed"?setup.message || "The library check failed.":!saved?"Not configured":link.online?"Connected (last share check)":"Saved — share not checked";
         text(document.getElementById("savedConnectionStatus"),savedStatus);
         document.getElementById("savedConnectionStatus").className=statusFresh && saved && link.online && !setup.busy && setup.phase !== "error"?"ok":"subtle";
@@ -1345,15 +1387,21 @@
         refreshButton.setAttribute("aria-describedby",refreshMessage ? "libraryRefreshStatus" : "");
         var supported=setup.supported === true;
         var editable=statusFresh && supported && setup.editable && !setup.busy && !setupPosting && !pending && !nativeSaveOperation && !view.dashboardBusy(value);
+        var nfs=transport.value === "nfs";
         var accountChanged=typeof settings.user === "string" && smbUser.value.trim() !== settings.user;
-        keepCredentials.disabled=!editable || server.value.trim() !== settings.server || accountChanged;
-        if (server.value.trim() !== settings.server || accountChanged) keepCredentials.checked=false;
-        document.getElementById("keepCredentialsField").hidden = !supported || !setup.hasSavedCredentials;
+        keepCredentials.disabled=!editable || nfs || savedNfs || server.value.trim() !== settings.server || accountChanged;
+        if (nfs || savedNfs || server.value.trim() !== settings.server || accountChanged) keepCredentials.checked=false;
+        document.getElementById("keepCredentialsField").hidden = !supported || !setup.hasSavedCredentials || nfs;
         var keeping=supported && keepCredentials.checked;
-        ["smbUserField","smbPasswordField"].forEach(function (id) {document.getElementById(id).hidden=false;});
+        /* NFS has no Windows sign-in. Hide the inputs too, so controller navigation skips them. */
+        [["nativeShareField",shareName],["nativeShare2Field",shareName2],["smbUserField",smbUser],["smbPasswordField",smbPassword],["pwToggle",document.getElementById("pwToggle")]].forEach(function (pair) {
+          document.getElementById(pair[0]).hidden=nfs;pair[1].hidden=nfs;});
+        [["nfsExportField",nfsExport],["nfsPathField",nfsPath],["nfsPath2Field",nfsPath2],["nfsVersionField",nfsVersion],["nfsUidField",nfsUid],["nfsGidField",nfsGid]].forEach(function (pair) {
+          document.getElementById(pair[0]).hidden=!nfs;pair[1].hidden=!nfs;});
+        text(document.getElementById("serverLabel"),nfs?"NFS server address":"PC address");
         [smbUser,smbPassword].forEach(function (input) {input.disabled=!editable;});
         smbPassword.placeholder=keeping?"********":"";
-        [server,shareName,shareName2].forEach(function (input) {input.disabled=!editable;});
+        [transport,server,shareName,shareName2,nfsExport,nfsPath,nfsPath2,nfsVersion,nfsUid,nfsGid].forEach(function (input) {input.disabled=!editable;});
         if (setupScrollPending) {
           document.getElementById("setupPanel").open=true;
           document.getElementById("setupPanel").scrollIntoView();
@@ -1802,18 +1850,22 @@
       document.getElementById("clearSearch").addEventListener("click", function () {
         search.value = ""; renderCards(); search.focus();
       });
-      [smbUser, smbPassword, server, shareName, shareName2, keepCredentials].forEach(function (input) {
-        input.addEventListener("input", function () {
-          if(input===smbUser || input===smbPassword || input===server)keepCredentials.checked=false;
+      [smbUser, smbPassword, server, shareName, shareName2, keepCredentials, transport, nfsExport, nfsPath, nfsPath2, nfsVersion, nfsUid, nfsGid].forEach(function (input) {
+        function edited() {
+          if(input===smbUser || input===smbPassword || input===server || input===transport)keepCredentials.checked=false;
           if(input===keepCredentials && keepCredentials.checked)smbPassword.value="";
           settingsDirty=true;renderSetup();
-        });
+        }
+        input.addEventListener("input", edited);
+        if (input===transport || input===nfsVersion) input.addEventListener("change", edited);
       });
       document.getElementById("setup").addEventListener("submit", function (event) {
         event.preventDefault();
         if (!setupAvailability().canSave) {renderSetup();return;}
         var body;
-        try {body=view.setupBody(state,{server:server.value,share:shareName.value,share2:shareName2.value,user:smbUser.value,password:smbPassword.value,keep:keepCredentials.checked,revision:formRevision});}
+        try {body=view.setupBody(state,transport.value === "nfs"
+          ? {transport:"nfs",server:server.value,nfsExport:nfsExport.value,nfsPath:nfsPath.value,nfsPath2:nfsPath2.value,nfsVersion:nfsVersion.value,nfsUid:nfsUid.value,nfsGid:nfsGid.value,revision:formRevision}
+          : {server:server.value,share:shareName.value,share2:shareName2.value,user:smbUser.value,password:smbPassword.value,keep:keepCredentials.checked,revision:formRevision});}
         catch(error) {notice={text:error.message,kind:"bad"};show(state);return;}
         var save = document.getElementById("saveSetup");
         setupPosting=true;
