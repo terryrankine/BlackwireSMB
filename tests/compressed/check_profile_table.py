@@ -31,9 +31,9 @@ def main():
     result=json.loads(run('profile-table',[str(out/'profile_table')]))
     after={str(p.relative_to(root)):pin(p) for p in inputs}
     if before!=after:raise RuntimeError('Source changed during verification')
-    proof={'passed':bool(result.get('passed')),'checks':result['checks'],'source':after,
-           'sourceBeforeAfterMatch':True,'consoleActions':0,'moduleExecution':False,'fullBuilds':0}
+    # Only what this run measured: the host binary's result and the pinned inputs.
+    proof={'passed':bool(result.get('passed')),'checks':result['checks'],'source':after}
     (out/'proof.json').write_text(json.dumps(proof,indent=2)+'\n')
-    print(json.dumps({k:proof[k] for k in ('passed','checks','consoleActions')}))
+    print(json.dumps({k:proof[k] for k in ('passed','checks')}))
 
 if __name__=='__main__':main()
