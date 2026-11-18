@@ -12,6 +12,12 @@
     "path": "LICENSES/LGPL-2.1.txt"
   },
   {
+    "bytes": 1457,
+    "sha256": "d9406ced95457941032aa11d04623b8ab71f2827a3395ebef137aec475be35b1",
+    "source": "vendor/libnfs/LICENCE-BSD.txt",
+    "path": "LICENSES/LIBNFS-BSD.txt"
+  },
+  {
     "bytes": 658,
     "sha256": "5c3a531b92d858389aa4191445b12b0c6788f2887a9caea57aafe17b62763881",
     "source": "vendor/ampr/third_party/lz4/LICENSE",

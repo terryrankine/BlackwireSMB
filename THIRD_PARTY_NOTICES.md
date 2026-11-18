@@ -7,6 +7,7 @@ Original Blackwire integration is GPL-3.0-or-later. Preserve [LICENSE](LICENSE),
 | Ampr and Blackwire reader integration | GPL-3.0-or-later; exact upstream source, modifications, transformation/build scripts and GPL text. |
 | ps5-payload-manager-derived process query | Retained GPL notice and corresponding modified source. |
 | libsmb2 core | LGPL-2.1-or-later; exact source/local fixes and a practical rebuild/relink path for statically linked binaries; individual files retain their notices. |
+| libnfs 8.0.1 | Library (`lib`, `include`) LGPL-2.1-or-later, same text as [LGPL-2.1](LICENSES/LGPL-2.1.txt); protocol `.x` and generated `libnfs-raw-*` files simplified BSD, [LIBNFS-BSD](LICENSES/LIBNFS-BSD.txt). Exact upstream tag `libnfs-8.0.1` without the GPL `examples` directory; GPL-3.0-or-later utilities and tests are retained but not built. Static use needs the same rebuild/relink path as libsmb2; individual files retain their notices. Not yet linked into `Blackwire.elf`. |
 | SQLite | Retained public-domain dedication and version/check-in. |
 | Miniz inflate subset | MIT copyright, grant and disclaimer in the imported files. |
 | LZ4 library | BSD-2-Clause library notices; upstream directories retain their respective terms. |
