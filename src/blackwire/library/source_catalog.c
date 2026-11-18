@@ -5,7 +5,7 @@ int bw_source_catalog_binding(struct bw_provider_binding *out,const struct bw_sh
     if (!out) return -1;memset(out,0,sizeof *out);
     if (!configured || !item || !memchr(item->source_share,0,sizeof item->source_share)) return -1;
     struct bw_share_config connection={0};
-    int result=bw_share_select(&connection,configured,item->source_share) ||
+    int result=bw_share_select_source(&connection,configured,item->source_share) ||
         bw_provider_binding_init(out,&connection,item->source,item->title_id,bw_source_catalog_kind(item));
     bw_share_clear(&connection);return result?-1:0;
 }
@@ -42,7 +42,7 @@ void bw_source_catalog_image_hash(const struct bw_stat *p,uint8_t out[32]){
 }
 /* Existing callers use this as a boolean; -2 additionally preserves a proven
  * deadline expiry instead of labelling it a changed image generation. */
-static int live(const struct bw_source *p){struct timespec at;if(!p->smb||clock_gettime(CLOCK_MONOTONIC,&at))return -1;return ((double)at.tv_sec+(double)at.tv_nsec/1e9)>=p->deadline?-2:0;}
+static int live(const struct bw_source *p){struct timespec at;if(!bw_source_connected(p)||clock_gettime(CLOCK_MONOTONIC,&at))return -1;return ((double)at.tv_sec+(double)at.tv_nsec/1e9)>=p->deadline?-2:0;}
 static int listed_time(uint64_t ticks,uint64_t seconds,uint64_t nsec){
     const uint64_t epoch=UINT64_C(116444736000000000);
     return ticks>=epoch&&(ticks-epoch)/10000000==seconds&&((ticks-epoch)%10000000)/10==nsec/1000;
@@ -88,7 +88,7 @@ static int inspect_image(struct scan *scan,const struct candidate *candidate,str
     item->container_stage=BW_CATALOG_IMAGE_SIZE;
     if(candidate->info.size<48||candidate->info.size>BW_PFS_MAX_VOLUME){result=BW_PFS_UNSUPPORTED;goto done;}
     item->container_stage=BW_CATALOG_IMAGE_OPEN;
-    result=bw_container_smb_open_owned_metadata(image,&source->smb,candidate->source);
+    result=bw_source_open_image(source,image,candidate->source);
     if(result==BW_PFS_IO||result==BW_CONTAINER_STALE){bad=fail(scan->catalog,
         image_access_refused(image)?"catalog_image_access_refused":"catalog_image_generation_or_io_failed");goto done;}
     if(!listed_image(&candidate->info,&image->admitted)){item->container_stage=BW_CATALOG_IMAGE_LISTING;bad=fail(scan->catalog,"catalog_image_listing_changed");goto done;}
@@ -123,7 +123,7 @@ static int inspect_image(struct scan *scan,const struct candidate *candidate,str
     }
 done:
     item->container_error=result;
-    uint64_t requests=image->read_calls+2*image->generation_checks+(image->smb?3u:0u);
+    uint64_t requests=image->read_calls+2*image->generation_checks+(image->context?3u:0u);
     if(image->read_bytes>UINT64_MAX-source->content_bytes||requests>UINT32_MAX-source->requests)bad=fail(scan->catalog,"catalog_image_counter_limit");
     else{source->content_bytes+=image->read_bytes;source->requests+=(uint32_t)requests;}
     if(image->handle&&bw_container_smb_close(image))bad=fail(scan->catalog,"catalog_image_close_failed");
@@ -143,7 +143,7 @@ done:
         "path=%.1023s stage=%s containerResult=%d containerError=%s catalogReason=%.128s transportResult=%d "
         "connectionPresent=%u containerKind=%d decoderResult=%d imageFailed=%d reads=%llu readBytes=%llu generationChecks=%llu namespaceFiles=%u deadline=%.6f",
         candidate->source,bw_source_catalog_stage_name(item),result,bw_source_catalog_error_name(item),
-        scan->catalog->error?scan->catalog->error:"unavailable",image->last_transport_error,source->smb?1u:0u,
+        scan->catalog->error?scan->catalog->error:"unavailable",image->last_transport_error,bw_source_connected(source)?1u:0u,
         image->container.kind,image->container.decoder_error,image->failed,
         (unsigned long long)image->read_calls,(unsigned long long)image->read_bytes,
         (unsigned long long)image->generation_checks,item->namespace_files,source->deadline);
@@ -156,7 +156,7 @@ int bw_source_catalog_container_cover(struct bw_source *source,const struct bw_c
     if(!item->cover||!item->logical_icon_size||item->logical_icon_size>BW_SOURCE_SMALL_FILE_LIMIT||item->logical_icon_size>limit)return 1;
     struct bw_container_smb *image=calloc(1,sizeof *image);void *bytes=NULL;int result=-1;
     if(!image)goto done;
-    if(live(source)||bw_container_smb_open_owned_metadata(image,&source->smb,item->source)||
+    if(live(source)||bw_source_open_image(source,image,item->source)||
        !bw_source_catalog_image_same(&item->image,&image->admitted)||image->container.kind!=item->container_kind)goto done;
     struct bw_container_file icon={0};
     if(bw_container_file_open(&image->container,"sce_sys/icon0.png",&icon)||icon.size!=item->logical_icon_size)goto done;
@@ -166,7 +166,7 @@ int bw_source_catalog_container_cover(struct bw_source *source,const struct bw_c
     result=0;
 done:
     if(image){
-        uint64_t requests=image->read_calls+2*image->generation_checks+(image->smb?3u:0u);
+        uint64_t requests=image->read_calls+2*image->generation_checks+(image->context?3u:0u);
         if(image->read_bytes>UINT64_MAX-source->content_bytes||requests>UINT32_MAX-source->requests)result=-1;
         else{source->content_bytes+=image->read_bytes;source->requests+=(uint32_t)requests;}
         if(image->handle&&bw_container_smb_close(image))result=-1;

@@ -24,7 +24,9 @@ static int o_range(struct bw_source *p,const struct bw_source_snapshot *s,const 
 static int o_list(struct bw_source *p,const char *a,bw_source_visit_fn v,void *o){(void)p;(void)a;(void)v;(void)o;ops_calls++;return 15;}
 static int o_info(struct bw_source *p,const char *a,struct bw_source_info *i){(void)p;(void)a;(void)i;ops_calls++;return 16;}
 static int o_small(struct bw_source *p,const char *a,size_t n,void **b,size_t *z,struct bw_source_info *i){(void)p;(void)a;(void)n;(void)b;(void)z;(void)i;ops_calls++;return 17;}
-static const struct bw_source_ops table={o_snapshot,o_read,o_range,o_list,o_info,o_small};
+static int o_image(struct bw_source *p,struct bw_container_smb *i,const char *a){(void)p;(void)i;(void)a;ops_calls++;return 18;}
+static const struct bw_source_ops table={o_snapshot,o_read,o_range,o_list,o_info,o_small,o_image};
+int bw_container_smb_open_owned_metadata(struct bw_container_smb *i,struct smb2_context **o,const char *a){(void)i;(void)o;(void)a;smb_calls++;return 9;}
 
 int main(void){
     struct bw_source smb={0};struct bw_source_info info;void *bytes=NULL;size_t size=0;
@@ -36,7 +38,8 @@ int main(void){
     C(bw_source_list(&smb,"",NULL,NULL)==5);
     C(bw_source_file_info(&smb,"a",&info)==6);
     C(bw_source_small_file(&smb,"a",1,&bytes,&size,&info)==8);
-    C(smb_calls==7&&!ops_calls);
+    C(bw_source_open_image(&smb,NULL,"a")==9);
+    C(smb_calls==8&&!ops_calls);
     struct bw_source other={0};other.ops=&table;int live;
     C(!bw_source_connected(&other));other.transport.context=&live;C(bw_source_connected(&other));
     other.smb=(struct smb2_context *)&other;
@@ -47,7 +50,8 @@ int main(void){
     C(bw_source_list(&other,"",NULL,NULL)==15);
     C(bw_source_file_info(&other,"a",&info)==16);
     C(bw_source_small_file(&other,"a",1,&bytes,&size,&info)==17);
-    C(smb_calls==7&&ops_calls==7);
+    C(bw_source_open_image(&other,NULL,"a")==18);
+    C(smb_calls==8&&ops_calls==8);
     /* The reader still names the struct by its old name. */
     struct bw_source_smb legacy={.smb=NULL,.deadline=1};C(legacy.deadline==1&&sizeof legacy==sizeof(struct bw_source));
     printf("{\"source_ops\":%u}\n",checks);

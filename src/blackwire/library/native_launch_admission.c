@@ -272,7 +272,7 @@ static int na_container_source(struct bw_native_launch_admission *p,struct bw_so
     struct bw_container_manifest files={0};int result=-1;uint8_t generation[32];
     const struct bw_manifest *original=p->companions?&p->companions->original_manifest:&p->manifest;
     const uint8_t *original_sha=p->companions?p->companions->original_map_sha256:p->map_sha256;
-    if(!image||na_source_current(p)||bw_container_smb_open_owned_metadata(image,&source->smb,p->identity.binding.source)||
+    if(!image||na_source_current(p)||bw_source_open_image(source,image,p->identity.binding.source)||
        bw_container_manifest_bind(&files,&image->container,original)||na_source_current(p))goto done;
     bw_provider_image_generation_stat(&p->identity,&image->admitted,original_sha,generation);
     if(memcmp(generation,p->generation,32)||bw_container_validate(&image->container)||na_current(p))goto done;
@@ -286,7 +286,7 @@ int bw_native_launch_admission_source(struct bw_native_launch_admission *p,const
     struct bw_source *source,const struct bw_reader_selection *selected,uint8_t map_sha[32],uint8_t generation[32],const char **error){
     const char *failure="The selected PC source or required startup metadata changed; choose Send to revalidate it.";
     if(error)*error=failure;struct bw_provider_binding identity;int result=-1;void *param=NULL;size_t size=0;
-    if(!p||p->purpose!=BW_SOURCE_AMPR_EXECUTION||!connection||!source||!source->smb||!map_sha||!generation||source->error||
+    if(!p||p->purpose!=BW_SOURCE_AMPR_EXECUTION||!connection||!source||!bw_source_connected(source)||!map_sha||!generation||source->error||
        bw_provider_binding_init(&identity,connection,p->identity.binding.source,p->identity.binding.title,p->identity.kind)||
        !na_bound(&p->identity,&identity)||na_selected(p,selected)||na_current(p))goto done;
     if(identity.kind==BW_PROVIDER_CONTAINER){
@@ -393,7 +393,7 @@ int bw_native_launch_admission_source_connect(struct bw_native_launch_admission 
        !na_bound(&p->identity,&identity)||na_selected(p,selected)||na_current(p))goto done;
     double remaining=deadline-cp_now();if(remaining<=0)goto done;
     unsigned timeout=remaining>=10?10u:(unsigned)remaining+1u;
-    if(bw_source_connect_smb(&connection,BW_TP_PROFILE_ADMISSION,(int)timeout,&source.smb,NULL)||na_current(p)||
+    if(bw_source_connect(&source,&connection,BW_TP_PROFILE_ADMISSION,(int)timeout,NULL)||na_current(p)||
        bw_native_launch_admission_source(p,&connection,&source,selected,map,generation,&failure)||na_current(p))goto done;
     result=0;
 done:
@@ -401,6 +401,8 @@ done:
         if(smb2_disconnect_share(source.smb)<0){result=-1;if(!failure)failure="The PC source connection could not be positively released.";}
         smb2_destroy_context(source.smb);
     }
+    /* NFS has no session to release. Destroying the context ends it. */
+    bw_transport_poison(&source.transport);
     bw_share_clear(&connection);memset(map,0,sizeof map);memset(generation,0,sizeof generation);
     if(result)na_fail(p,failure);if(error)*error=result?failure:NULL;return result;
 }

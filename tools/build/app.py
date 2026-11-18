@@ -195,6 +195,18 @@ def build(root, out, sdk, dependency, image, runner, jobs=2, host_tests=False, a
             "-I", "{SDK}/target/user/homebrew/include", "-c", "{SRC}/library/" + name + ".c", "-o", target,
             "-MD", "-MP", "-MF", "{OUT}/deps/" + name + ".d"]})
         objects.append(target)
+    # The resident NFS source and transport. Only these units include libnfs.
+    for name, source in (("bw-transport-nfs", "{SRC}/streamreader/bw_transport_nfs.c"),
+                         ("source-nfs", "{SRC}/library/source_nfs.c")):
+        target = "{OUT}/objects/" + name + ".o"
+        additional.append({"label": "compile-" + name, "argv": [
+            "{SDK}/bin/prospero-clang", "-std=gnu11", "-Wall", "-Wextra", "-Werror",
+            "-Wno-misleading-indentation", "-g", "-DBW_GTA_AUDIO_BOOTSTRAP=1",
+            *source_flags(root, sdk), "-I", "{SRC}/library", "-I", "{SRC}/streamreader",
+            "-I", "{NFS_INCLUDE}", "-I", "{SMB_INCLUDE}",
+            "-I", "{SDK}/target/user/homebrew/include", "-c", source, "-o", target,
+            "-MD", "-MP", "-MF", "{OUT}/deps/" + name + ".d"]})
+        objects.append(target)
     sources = []
     for part in ("model", "service", "local-removal"):
         sources.extend(sorted((root / "src/blackwire/dashboard" / part).glob("*.c")))
@@ -217,11 +229,13 @@ def build(root, out, sdk, dependency, image, runner, jobs=2, host_tests=False, a
     media_index = next(i for i, value in enumerate(link["argv"]) if value.startswith("{OUT}/objects/"))
     link["argv"].insert(media_index, media_object)
     link["argv"][link["argv"].index("-o"):link["argv"].index("-o")] = objects
+    link["argv"].insert(link["argv"].index("{SMB_ARCHIVE}") + 1, "{NFS_ARCHIVE}")
     commands[commands.index(link):commands.index(link)] = additional
     tokens = {"{ROOT}": str(root), "{SRC}": str(root / "src/blackwire"), "{SDK}": str(sdk),
               "{OUT}": str(out), "{SQLITE}": str(root / "vendor/sqlite"),
               "{SQLITE_OBJECT}": str(dependency["sqlite"]), "{SMB_ARCHIVE}": str(dependency["smb"]),
               "{SMB_INCLUDE}": str(root / "vendor/libsmb2/include"),
+              "{NFS_ARCHIVE}": str(dependency["nfs"]), "{NFS_INCLUDE}": str(root / "vendor/libnfs/include"),
               "{DASHBOARD}": str(root / "src/blackwire/dashboard"),
               "{READER}": str(root / "src/blackwire/reader/native-reader.c")}
     def expand(value):

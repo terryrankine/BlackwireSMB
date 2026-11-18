@@ -15,6 +15,12 @@ UNITS = {
     'tp_error': (HERE / 'tp_error_test.c', [], []),
     'connect': (HERE / 'connect_test.c', [], []),
     'source_ops': (HERE / 'source_ops_test.c', [], []),
+    # The NFS module with its real sources, linked against the libnfs fake.
+    'nfs': (HERE / 'nfs_test.c', [LIB / n for n in (
+        'source_nfs.c', 'source_catalog.c', 'source_param.c', 'source_plan.c', 'source_snapshot.c', 'source_directory.c',
+        'compressed_data.c', 'source_profile.c', 'source_binding.c', 'source_identity.c')] + [STREAM / n for n in (
+        'bw_transport_nfs.c', 'share_config.c', 'manifest.c', 'container_source.c', 'container_manifest.c', 'container_smb.c',
+        'pfs_source.c', 'pfsc_range.c', 'pfsc_inflate.c')], ['-ffunction-sections', '-Wl,--gc-sections']),
     'container': (HERE / 'container_test.c', [STREAM / n for n in (
         'container_smb.c', 'container_source.c', 'pfs_source.c', 'pfsc_range.c', 'pfsc_inflate.c', 'manifest.c')], []),
 }
@@ -24,15 +30,35 @@ SYNTAX = [(STREAM / 'prepare_copy.c', ['-DSYS_fstatat=SYS_newfstatat'])]
 
 
 def fixture(root):
-    """A server root shared by every unit: one compressed image."""
+    """A server root shared by every unit. Images/ is the container fixture.
+    volume1/public is the NFS export: an images folder, as on the NAS, with a
+    sidecar hash and an in-progress copy beside the image, and a folder tree
+    with links for the neutral source scenarios."""
     sys.path.insert(0, str(ROOT / 'tests/compressed'))
     from fixtures import make_pfs
     (root / 'Images').mkdir(parents=True)
     asset = bytes((i * 29 + i // 251) % 256 for i in range(128 * 1024))
     image = make_pfs({'eboot.bin': b'NFS NEUTRAL STARTUP', 'sce_sys/param.json':
-                      b'{"titleId":"PPSA09999","titleName":"Neutral"}', 'asset.bin': asset})[0]
+                      b'{"titleId":"PPSA09999","titleName":"Neutral"}', 'asset.bin': asset,
+                      'sce_sys/icon0.png': b'\x89PNG NFS NEUTRAL COVER'})[0]
     (root / 'Images/Beta.ffpfsc').write_bytes(image)
-
+    games = root / 'volume1/public/emulation/ps5/games'
+    images = games / 'images'
+    images.mkdir(parents=True)
+    (images / 'Beta.ffpfsc').write_bytes(image)
+    (images / 'Beta.ffpfsc.sha256').write_text(hashlib.sha256(image).hexdigest() + '  Beta.ffpfsc\n')
+    (images / 'Gamma.ffpfsc.partial').write_bytes(image[:4096])
+    (images / 'Linked.ffpfsc').symlink_to('Beta.ffpfsc')
+    (games / 'linked').symlink_to('images')
+    alpha = games / 'folders/Alpha'
+    (alpha / 'sce_sys').mkdir(parents=True)
+    (alpha / 'data').mkdir()
+    (alpha / 'eboot.bin').write_bytes(bytes(i % 256 for i in range(4096)))
+    (alpha / 'sce_sys/param.json').write_bytes(b'{"titleId":"PPSA09998","contentId":"UP0000-PPSA09998_00-NFSNEUTRAL000000","titleName":"Alpha"}')
+    (alpha / 'sce_sys/icon0.png').write_bytes(b'\x89PNG ALPHA')
+    (alpha / 'data/a.bin').write_bytes(bytes((i * 7 + i // 253) % 256 for i in range(400000)))
+    (games / 'folders/LinkedGame').symlink_to('Alpha')
+    (games / 'folders/Alpha.lnk').symlink_to('Alpha/eboot.bin')
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)

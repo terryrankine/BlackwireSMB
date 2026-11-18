@@ -265,10 +265,10 @@ static int prepare(void *opaque,struct bw_share_config *config,const struct bw_n
     struct bw_provider_binding resolved={0};
     if(bw_provider_binding_select(&resolved,config,selection->identity.binding.source,selection->identity.binding.title,
         selection->identity.kind,selection->identity.binding.game)||memcmp(&resolved,&selection->identity,sizeof resolved))goto done;
-    int connected=bw_source_connect_smb(config,BW_TP_PROFILE_SCAN,10,&source.smb,NULL);bw_share_clear(config);if(connected<0||current(guard))goto done;
+    int connected=bw_source_connect(&source,config,BW_TP_PROFILE_SCAN,10,NULL);bw_share_clear(config);if(connected<0||current(guard))goto done;
     if(selection->identity.kind==BW_PROVIDER_CONTAINER){
         image=calloc(1,sizeof *image);if(!image)goto done;
-        if(bw_container_smb_open_owned_metadata(image,&source.smb,selection->identity.binding.source))goto done;
+        if(bw_source_open_image(&source,image,selection->identity.binding.source))goto done;
         if(!bw_source_catalog_image_same(&selection->image,&image->admitted)||selection->container_kind!=image->container.kind){result=BW_BACKEND_SOURCE_CHANGED;goto done;}
     }else if(selection->identity.kind!=BW_PROVIDER_FOLDER)goto done;
     enum bw_source_plan_policy source_policy=BW_SOURCE_PLAN_LEGACY;
@@ -301,6 +301,9 @@ static int prepare(void *opaque,struct bw_share_config *config,const struct bw_n
         plain_folder=1;
     }
 #endif
+    /* The batch and derived contexts are built on the SMB connection. A
+     * folder on another transport takes the plain verified copy. */
+    if(source.ops)plain_folder=1;
     if(selection->identity.kind==BW_PROVIDER_FOLDER&&!plain_folder){
         int supported=bw_native_batch_context_prepare(&batch,&provider,preparation_data_current,&lease,selection,lease.jobs,lease.token);
         if(supported<0){struct bw_source_progress progress=source.progress;progress.phase=BW_SOURCE_ERROR;observe(observer,&progress);goto done;}
@@ -344,7 +347,7 @@ done:
     if(bw_native_batch_context_destroy(&batch)&&!result)result=BW_SEND_UNCONFIRMED;
     bw_share_clear(config);if(bw_native_derived_context_destroy(&derived)&&!result)result=BW_SEND_UNCONFIRMED;bw_source_provider_destroy(&provider);
     if(image){if(image->handle&&bw_container_smb_close(image)&&!result)result=BW_SEND_UNCONFIRMED;free(image);}
-    if(source.smb)smb2_destroy_context(source.smb);return result;
+    bw_source_release(&source);return result;
 }
 
 #ifdef BW_NATIVE_PLAYBACK
@@ -708,7 +711,7 @@ static int valid_library(const struct bw_native_library *p){
     size_t covers=0;
     for(size_t i=0;i<c->count;i++){
         const struct bw_catalog_item *item=&c->items[i];
-        if(!memchr(item->source,0,sizeof item->source)||!memchr(item->source_share,0,sizeof item->source_share)||strpbrk(item->source_share,"/\\:")||!bw_json_utf8(item->source_share)||!memchr(item->name,0,sizeof item->name)||!memchr(item->title,0,sizeof item->title)||
+        if(!memchr(item->source,0,sizeof item->source)||!memchr(item->source_share,0,sizeof item->source_share)||strpbrk(item->source_share,"\\:")||(strchr(item->source_share,'/')&&bw_manifest_validate_path(item->source_share,strlen(item->source_share)))||!bw_json_utf8(item->source_share)||!memchr(item->name,0,sizeof item->name)||!memchr(item->title,0,sizeof item->title)||
             !memchr(item->title_id,0,sizeof item->title_id)||(unsigned)item->state>BW_CATALOG_CONTAINER_READY||!item->source[0]||
             bw_manifest_validate_path(item->source,strlen(item->source))||!bw_json_utf8(item->title)||(i&&catalog_order(c->items+i-1,item)>=0))return 0;
         if(bw_source_catalog_available(item)){if(strlen(item->title_id)!=9||memcmp(item->title_id,"PPSA",4))return 0;
@@ -783,6 +786,12 @@ static void check_failure_message(struct bw_native_backend *p,const struct bw_na
             class==BW_TP_AUTH?"SMB sign-in was refused":
             class==BW_TP_DENIED?"SMB share access was refused":
             failure->result==-ETIMEDOUT?"The SMB connection timed out":"The SMB connection or sign-in failed";
+    }else if(!strcmp(failure->stage,"nfs-connect")){
+        enum bw_tp_error class=bw_tp_error_from_nfs(failure->result,1);
+        what=class==BW_TP_ROOT_MISSING?"The NFS export or source folder was not found on the server":
+            class==BW_TP_AUTH?"The NFS server refused this console. Check its allowed hosts and the insecure option":
+            class==BW_TP_TIMEOUT?"The NFS connection timed out. Check ports 111, mountd and 2049 for NFS v3, or 2049 for v4":
+            "The NFS connection failed";
     }else if(*failure->source&&failure->transport_result_known&&
              (!strcmp(failure->source_operation,"admit_stat")||!strcmp(failure->source_operation,"generation_fstat")||
               !strcmp(failure->source_operation,"generation_stat")||!strcmp(failure->source_operation,"pread"))&&
@@ -804,10 +813,13 @@ static void check_failure_message(struct bw_native_backend *p,const struct bw_na
 }
 static int discover_one(void *opaque,struct bw_share_config *share,struct bw_native_library *out,size_t cover_limit){
     (void)opaque;struct bw_source source={0};double start=now();if(start<0)return -1;source.deadline=start+180;
-    const char *stage="smb-connect";
-    char share_name[128];memcpy(share_name,share->share,sizeof share_name);
-    struct bw_tp_status connect;int result=bw_source_connect_smb(share,BW_TP_PROFILE_SCAN,10,&source.smb,&connect);
-    if(!source.smb){check_failure(&out->failure,share_name,stage,-1,0,"smb_context_allocation_failed",NULL);bw_share_clear(share);return -1;}
+    const int nfs=share->transport==BW_SHARE_NFS;const char *stage=nfs?"nfs-connect":"smb-connect";
+    /* The source name each catalog row records: the share, or the NFS root. */
+    char share_name[128]={0};const char *name=nfs?share->nfs_path:share->share;
+    if(strnlen(name,sizeof share_name)>=sizeof share_name){check_failure(&out->failure,NULL,stage,-1,0,"source_name_too_long",NULL);bw_share_clear(share);return -1;}
+    memcpy(share_name,name,strlen(name)+1);
+    struct bw_tp_status connect;int result=bw_source_connect(&source,share,BW_TP_PROFILE_SCAN,10,&connect);
+    if(nfs?result<0&&!connect.result_known:!source.smb){check_failure(&out->failure,share_name,stage,-1,0,nfs?"nfs_unavailable_or_invalid":"smb_context_allocation_failed",NULL);bw_share_clear(share);return -1;}
     bw_share_clear(share);if(result<0){result=connect.result;goto done;}
     stage="catalog";
     result=bw_source_catalog_scan(&source,&out->catalog);if(result)goto done;
@@ -839,7 +851,7 @@ done:
         bw_send_log("connection-source-failure","share=%.127s stage=%s result=%d smb_status=0x%08x catalog_reason=%.128s source_reason=%.128s requests=%u entries=%u",share_name,stage,result,status,out->failure.reason,out->failure.source_reason,source.requests,source.entries);
     }
     out->requests=source.requests;out->entries=source.entries;out->content_bytes=source.content_bytes;
-    if(source.smb)smb2_destroy_context(source.smb);return result;
+    bw_source_release(&source);return result;
 }
 /* Merge metadata and owned artwork together. Relative paths may repeat across
  * shares; no title/path-only deduplication can replace their source binding. */
@@ -873,9 +885,10 @@ static int library_merge(struct bw_native_library *out,struct bw_native_library 
 static int discover(void *opaque,struct bw_share_config *configured,struct bw_native_library *out){
     struct bw_native_library parts[2]={{0},{0}};struct bw_share_config connection={0};int result=-1;
     for(unsigned i=0;i<2;i++){
-        if(i&&!*configured->share2)break;
-        const char *selected=i?configured->share2:configured->share;
-        if(bw_share_select(&connection,configured,i?configured->share2:NULL)){
+        const char *name=bw_share_source_name(configured,i);
+        if(i&&!name)break;
+        const char *selected=name?name:"";
+        if(bw_share_select_source(&connection,configured,i?name:NULL)){
             check_failure(&out->failure,selected,"share-selection",-1,0,"invalid_share_selection",NULL);goto done;
         }
         if(discover_one(opaque,&connection,parts+i,BW_NATIVE_COVER_LIMIT-parts[0].cover_bytes)||!valid_library(parts+i)){

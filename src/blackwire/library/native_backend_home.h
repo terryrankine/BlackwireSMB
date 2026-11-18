@@ -69,13 +69,13 @@ static int home_source(struct home_worker *h,const struct bw_share_config *confi
     if(home_lease(h))return -1;
     double remain=h->deadline-now();if(remain<=0)return -1;
     unsigned timeout=(unsigned)ceil(remain);if(timeout>10)timeout=10;if(!timeout)timeout=1;
-    if(bw_source_connect_smb(config,BW_TP_PROFILE_ADMISSION,(int)timeout,&source.smb,NULL)||home_lease(h)||
+    if(bw_source_connect(&source,config,BW_TP_PROFILE_ADMISSION,(int)timeout,NULL)||home_lease(h)||
        bw_native_launch_admission_source(h->startup,config,&source,selected,map,generation,&error)||memcmp(map,h->claim.map_sha256,32)||home_lease(h))goto done;
     result=0;
 done:
     /* Source operations drain their same-worker async callbacks before return.
      * No callback or shared reader source escapes this bounded preflight. */
-    if(source.smb)smb2_destroy_context(source.smb);memset(map,0,sizeof map);memset(generation,0,sizeof generation);return result;
+    bw_source_release(&source);memset(map,0,sizeof map);memset(generation,0,sizeof generation);return result;
 }
 static int home_select(struct home_worker *h,struct bw_share_config *config){
     struct bw_native_backend *p=h->backend;uint32_t app=0;char title[10];

@@ -21,7 +21,7 @@ static int local_path(const struct local_context *c,const char *path,char *out,s
     int n=snprintf(out,size,"%s%s%s",c->root,*path?"/":"",path);return n<0||(size_t)n>=size?-ENAMETOOLONG:0;
 }
 static void local_convert(const struct stat *st,struct bw_stat *out){
-    *out=(struct bw_stat){S_ISREG(st->st_mode)?BW_TP_FILE:S_ISDIR(st->st_mode)?BW_TP_DIRECTORY:BW_TP_LINK,0,(uint64_t)st->st_ino,
+    *out=(struct bw_stat){S_ISREG(st->st_mode)?BW_TP_FILE:S_ISDIR(st->st_mode)?BW_TP_DIRECTORY:S_ISLNK(st->st_mode)?BW_TP_LINK:BW_TP_SPECIAL,0,(uint64_t)st->st_ino,
         (uint64_t)st->st_size,(uint64_t)st->st_mtim.tv_sec,(uint64_t)st->st_mtim.tv_nsec,(uint64_t)st->st_ctim.tv_sec,(uint64_t)st->st_ctim.tv_nsec};
 }
 static int local_stat(void *context,const char *path,struct bw_stat *out,struct bw_tp_stat_slot *slot){
@@ -59,5 +59,18 @@ static void local_destroy(void *context){
     struct local_context *c=context;c->destroyed++;
     for(unsigned i=0;i<32;i++)if(c->open[i]){close(c->open[i]->fd);free(c->open[i]);c->open[i]=NULL;}
 }
-static const struct bw_transport_ops local_ops={BW_TP_NFS,local_stat,local_open,local_fstat,local_pread,local_close,local_max_read,local_destroy};
+#include <dirent.h>
+static int local_list(void *context,const char *path,bw_tp_dirent_fn fn,void *opaque){
+    struct local_context *c=context;char full[2048];struct stat st;
+    if(local_path(c,path,full,sizeof full))return -ENAMETOOLONG;
+    if(lstat(full,&st))return -errno;if(S_ISLNK(st.st_mode))return -ELOOP;if(!S_ISDIR(st.st_mode))return -ENOTDIR;
+    DIR *d=opendir(full);if(!d)return -errno;int result=0;
+    for(struct dirent *e;!result&&(e=readdir(d));){
+        char child[4096];struct bw_stat entry;snprintf(child,sizeof child,"%s/%s",full,e->d_name);
+        if(lstat(child,&st)){result=-errno;break;}
+        local_convert(&st,&entry);result=fn(opaque,e->d_name,&entry);
+    }
+    closedir(d);return result;
+}
+static const struct bw_transport_ops local_ops={BW_TP_NFS,local_stat,local_open,local_fstat,local_pread,local_close,local_max_read,local_destroy,local_list};
 #endif

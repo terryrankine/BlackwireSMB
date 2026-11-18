@@ -23,5 +23,5 @@ static inline int bw_tp_smb_close(void *context,void *file){return smb2_close(co
 static inline uint32_t bw_tp_smb_max_read(void *context){return smb2_get_max_read_size(context);}
 static inline void bw_tp_smb_destroy(void *context){smb2_destroy_context(context);}
 static const struct bw_transport_ops bw_transport_smb_ops __attribute__((unused))={BW_TP_SMB,
-    bw_tp_smb_stat,bw_tp_smb_open,bw_tp_smb_fstat,bw_tp_smb_pread,bw_tp_smb_close,bw_tp_smb_max_read,bw_tp_smb_destroy};
+    bw_tp_smb_stat,bw_tp_smb_open,bw_tp_smb_fstat,bw_tp_smb_pread,bw_tp_smb_close,bw_tp_smb_max_read,bw_tp_smb_destroy,NULL};
 #endif

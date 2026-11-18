@@ -5,7 +5,8 @@
  * catalog seals hash type, ino, size, mtime, mtime_nsec, ctime and ctime_nsec
  * as little-endian uint64 in that order, so these values must stay equal to
  * SMB2_TYPE_FILE/DIRECTORY/LINK (checked in bw_stat_smb2.h). */
-enum bw_tp_type {BW_TP_FILE=0,BW_TP_DIRECTORY=1,BW_TP_LINK=2};
+enum bw_tp_type {BW_TP_FILE=0,BW_TP_DIRECTORY=1,BW_TP_LINK=2,
+    BW_TP_SPECIAL=3 /* device, socket or FIFO. NFS only: SMB has no such type */};
 /* Fields are compared exactly, never rounded. SMB *_nsec values are whole
  * microseconds times 1000 because libsmb2 converts FILETIME to timeval. */
 struct bw_stat {

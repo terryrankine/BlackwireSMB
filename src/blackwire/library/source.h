@@ -4,6 +4,7 @@
 #include "source_snapshot.h"
 #include "../streamreader/bw_transport.h"
 struct smb2_context;
+struct bw_container_smb;
 enum bw_source_phase {
     BW_SOURCE_IDLE=0,BW_SOURCE_SCANNING,BW_SOURCE_METADATA,BW_SOURCE_HASHING,
     BW_SOURCE_RECHECKING,BW_SOURCE_VERIFIED,BW_SOURCE_PREFLIGHT,BW_SOURCE_COPYING,
@@ -38,6 +39,9 @@ struct bw_source_ops {
     int (*list)(struct bw_source *,const char *,bw_source_visit_fn,void *);
     int (*file_info)(struct bw_source *,const char *,struct bw_source_info *);
     int (*small_file)(struct bw_source *,const char *,size_t,void **,size_t *,struct bw_source_info *);
+    /* Opens a compressed image with the owned metadata window, under the
+     * same owned-transport contract as bw_container_smb_open_owned_metadata. */
+    int (*open_image)(struct bw_source *,struct bw_container_smb *,const char *);
 };
 struct bw_source {
     /* SMB: the owned libsmb2 connection. NULL for other transports. */
@@ -107,6 +111,10 @@ static inline int bw_source_list(struct bw_source *p,const char *path,bw_source_
 }
 static inline int bw_source_file_info(struct bw_source *p,const char *path,struct bw_source_info *info){
     return p&&p->ops?p->ops->file_info(p,path,info):bw_source_smb_file_info(p,path,info);
+}
+int bw_container_smb_open_owned_metadata(struct bw_container_smb *,struct smb2_context **,const char *);
+static inline int bw_source_open_image(struct bw_source *p,struct bw_container_smb *image,const char *path){
+    return p&&p->ops?p->ops->open_image(p,image,path):bw_container_smb_open_owned_metadata(image,p?&p->smb:NULL,path);
 }
 static inline int bw_source_small_file(struct bw_source *p,const char *path,size_t maximum,void **bytes,size_t *size,struct bw_source_info *info){
     return p&&p->ops?p->ops->small_file(p,path,maximum,bytes,size,info):bw_source_smb_small_file(p,path,maximum,bytes,size,info);

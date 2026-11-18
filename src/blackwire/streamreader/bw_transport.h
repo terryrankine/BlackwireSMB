@@ -1,5 +1,6 @@
 #ifndef BW_TRANSPORT_H
 #define BW_TRANSPORT_H
+#include <stddef.h>
 #include <stdint.h>
 #include "bw_stat.h"
 #include "bw_tp_error.h"
@@ -13,6 +14,8 @@ enum bw_tp_kind {BW_TP_SMB=1,BW_TP_NFS=2};
  * the context after a failure passes storage that outlives that drain.
  * Big enough for struct smb2_stat_64 and struct nfs_stat_64. */
 struct bw_tp_stat_slot {_Alignas(8) unsigned char bytes[160];};
+/* One directory entry. Nonzero stops the listing and is returned. */
+typedef int (*bw_tp_dirent_fn)(void *opaque,const char *name,const struct bw_stat *entry);
 struct bw_transport_ops {
     enum bw_tp_kind kind;
     /* Root-relative path. Returns 0 or the library's negative result. */
@@ -27,6 +30,9 @@ struct bw_transport_ops {
     uint32_t (*max_read)(void *context);
     /* Drains outstanding replies and frees the connection. */
     void (*destroy)(void *context);
+    /* Whole directory, "." and ".." included, never following a link to reach
+     * it. NULL for SMB, whose source lists with its own paged requests. */
+    int (*list)(void *context,const char *path,bw_tp_dirent_fn fn,void *opaque);
 };
 /* An owned connection. A failed op that poisons it destroys the context and
  * sets context to NULL, so every holder of this record sees it gone. */
