@@ -7,6 +7,7 @@
 #undef _POSIX_C_SOURCE
 #endif
 #include "startup_runtime_idle.h"
+#include "../streamreader/diagnostics/game_stop_identity.h"
 #include <ps5/kernel.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -19,10 +20,18 @@
  * PM process-record layout. A changed SDK/profile refuses at build/runtime. */
 _Static_assert(SYS___sysctl==202,"read-only sysctl ABI");
 _Static_assert(offsetof(struct kinfo_proc,ki_structsize)==0,"process size ABI");
-_Static_assert(offsetof(struct kinfo_proc,ki_pid)==72&&sizeof(((struct kinfo_proc *)0)->ki_pid)==4,"process PID ABI");
-_Static_assert(offsetof(struct kinfo_proc,ki_comm)==447&&sizeof(((struct kinfo_proc *)0)->ki_comm)==20,"process name ABI");
-_Static_assert(offsetof(struct kinfo_proc,ki_rssize)==264&&sizeof(((struct kinfo_proc *)0)->ki_rssize)==8,"process RSS ABI");
-_Static_assert(offsetof(struct kinfo_proc,ki_start)==336,"process birth ABI");
+_Static_assert(sizeof(((struct kinfo_proc *)0)->ki_pid)==4,"process PID ABI");
+_Static_assert(sizeof(((struct kinfo_proc *)0)->ki_comm)==20,"process name ABI");
+_Static_assert(sizeof(((struct kinfo_proc *)0)->ki_rssize)==8,"process RSS ABI");
+_Static_assert(sizeof(((struct kinfo_proc *)0)->ki_start.tv_sec)==8&&sizeof(((struct kinfo_proc *)0)->ki_start.tv_usec)==8,"process birth ABI");
+/* Each profile row must name the SDK's kinfo_proc fields. The record size is
+ * not asserted: the SDK struct is 1088 bytes and the console returns 1096. */
+#define PROFILE_ABI(fw,record,pid,start,comm,rssize) \
+    _Static_assert(offsetof(struct kinfo_proc,ki_pid)==(pid)&&offsetof(struct kinfo_proc,ki_start)==(start)&& \
+        offsetof(struct kinfo_proc,ki_start.tv_usec)==(start)+8&&offsetof(struct kinfo_proc,ki_comm)==(comm)&& \
+        offsetof(struct kinfo_proc,ki_rssize)==(rssize),"profile row offsets match kinfo_proc");
+BW_STOP_PROFILES(PROFILE_ABI)
+#undef PROFILE_ABI
 static uint32_t firmware(void *opaque){(void)opaque;return kernel_get_fw_version();}
 static struct bw_src_process_result query(void *opaque,void *buffer,size_t capacity){
     (void)opaque;size_t size=capacity;int mib[4]={CTL_KERN,KERN_PROC,KERN_PROC_PROC,0};

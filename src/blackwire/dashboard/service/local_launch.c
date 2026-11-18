@@ -225,7 +225,7 @@ int bd_local_state(void *opaque,const char run[33]){
         struct rc_game_identity identity={0};
         if(s->ops.admit(s->ops.opaque,&selected,&identity)!=RC_GAME_QUALIFIED||identity.process.pid!=selected.pid||
             identity.app_id!=selected.app_id||memcmp(identity.title,selected.title,10)||
-            identity.firmware!=BW_STOP_PROFILE_FW||bw_stop_identity_admit(&identity.process,identity.admitted_wall_us)){
+            !bw_stop_profile_lookup(identity.firmware,BW_STOP_PROFILE_RECORD)||bw_stop_identity_admit(&identity.process,identity.admitted_wall_us)){
             reason(s,"fresh_pid_birth_admission_unknown_no_fallback");s->log_poisoned=1;return -1;
         }
         s->state.identity=identity;s->state.identity_admitted=1;close_log(s);

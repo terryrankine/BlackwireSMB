@@ -42,7 +42,7 @@ struct rc_game_identity_ops {
 };
 
 /* Native read-only adapters; no PID discovery/default and no retries. Initial
- * admission requires age <=60s on the unchanged FW0x13000040/1096-byte profile.
+ * admission requires age <=60s on a firmware row of the profile table.
  * current() requires an immutable prior qualified identity, keeps its original
  * birth/admission time, and deliberately applies no subsequent age limit.
  * Both bracket two Sony identity captures with two public PID observations.

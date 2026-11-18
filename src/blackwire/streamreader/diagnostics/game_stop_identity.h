@@ -6,6 +6,24 @@
 #define BW_STOP_PROFILE_RECORD 1096u
 #define BW_STOP_PROFILE_MAX_AGE_US INT64_C(60000000)
 struct bw_stop_identity { int32_t pid; int64_t start_sec,start_usec; char role[20]; };
+/* One supported firmware/kinfo_proc layout. The offsets are the public BSD
+ * kinfo_proc fields the gates read. BW_STOP_PROFILE_* keep the 13.00 row's
+ * published values. */
+struct bw_stop_profile { uint32_t firmware; uint32_t record; uint16_t off_pid,off_start,off_comm,off_rssize; };
+/* Return the supported profile for this firmware and record size, or NULL. A
+ * firmware or record outside the table refuses exactly as the old constants. */
+const struct bw_stop_profile *bw_stop_profile_lookup(uint32_t firmware,size_t record);
+/* The measured rows, as X(firmware,record,pid,start,comm,rssize). The table and
+ * the PS5 build's kinfo_proc asserts both expand this one list, so a row cannot
+ * name offsets the SDK layout does not have. Usec is read at start+8.
+ * 13.00 (0x13000040): 1096-byte record measured on a console.
+ * 12.40 (0x12400009): 1096-byte record measured with tools/fw-probe on the
+ * probe's own process. KERN_PROC_PROC returned whole records. Only this exact
+ * value is measured, so other 12.40 low words stay outside the table.
+ * Add a row only once a firmware's record size and offsets are measured. */
+#define BW_STOP_PROFILES(X) \
+    X(BW_STOP_PROFILE_FW,BW_STOP_PROFILE_RECORD,72,336,447,264) \
+    X(UINT32_C(0x12400009),1096u,72,336,447,264)
 /* Parse ONLY the empirical public prefix approved for this isolated control.
  * Nonzero return is UNKNOWN; sanitized private pointer fields are not read. */
 int bw_stop_identity_parse(const void *,size_t,uint32_t,int32_t,struct bw_stop_identity *);

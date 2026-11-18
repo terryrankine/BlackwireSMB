@@ -33,7 +33,7 @@ static int ops_valid(const struct rc_game_identity_ops *ops, int initial) {
     return ops && ops->firmware && ops->self_pid && ops->process && ops->app_info &&
         ops->running_app && ops->app_title && (!initial || ops->wall_us);
 }
-static int process_capture(const struct rc_game_identity_ops *ops, int32_t pid,
+static int process_capture(const struct rc_game_identity_ops *ops, uint32_t firmware, int32_t pid,
                            unsigned char fill, struct bw_stop_identity *identity) {
     unsigned char raw[RC_PROCESS_CAPACITY];
     size_t used = 0;
@@ -41,7 +41,7 @@ static int process_capture(const struct rc_game_identity_ops *ops, int32_t pid,
     int result = ops->process(ops->opaque, pid, raw, sizeof raw, &used);
     if (result == RC_GAME_ABSENT) return used == 0 ? RC_GAME_ABSENT : RC_GAME_UNKNOWN;
     if (result != RC_GAME_QUALIFIED || used > sizeof raw ||
-        bw_stop_identity_parse(raw, used, BW_STOP_PROFILE_FW, pid, identity)) return RC_GAME_UNKNOWN;
+        bw_stop_identity_parse(raw, used, firmware, pid, identity)) return RC_GAME_UNKNOWN;
     return RC_GAME_QUALIFIED;
 }
 static int sony_capture(const struct rc_game_identity_ops *ops,
@@ -67,12 +67,12 @@ static int capture(const struct rc_game_identity_ops *ops,
     if (!ops_valid(ops, initial)) return RC_GAME_UNKNOWN;
     uint32_t firmware = ops->firmware(ops->opaque);
     int32_t self = ops->self_pid(ops->opaque);
-    if (firmware != BW_STOP_PROFILE_FW || !selection_valid(selection, self)) return RC_GAME_UNKNOWN;
+    if (!bw_stop_profile_lookup(firmware, BW_STOP_PROFILE_RECORD) || !selection_valid(selection, self)) return RC_GAME_UNKNOWN;
     struct bw_stop_identity first, last;
-    int first_result = process_capture(ops, selection->pid, 0xa5, &first);
+    int first_result = process_capture(ops, firmware, selection->pid, 0xa5, &first);
     if (first_result == RC_GAME_UNKNOWN) return RC_GAME_UNKNOWN;
     if (first_result == RC_GAME_ABSENT) {
-        int second_result = process_capture(ops, selection->pid, 0x5a, &last);
+        int second_result = process_capture(ops, firmware, selection->pid, 0x5a, &last);
         return second_result == RC_GAME_ABSENT && ops->firmware(ops->opaque) == firmware &&
             ops->self_pid(ops->opaque) == self ? RC_GAME_ABSENT : RC_GAME_UNKNOWN;
     }
@@ -85,7 +85,7 @@ static int capture(const struct rc_game_identity_ops *ops,
         if (bw_stop_identity_admit(&first, wall_before)) return RC_GAME_UNKNOWN;
     }
     if (sony_capture(ops, selection, 0xa5) || sony_capture(ops, selection, 0x5a) ||
-        process_capture(ops, selection->pid, 0x5a, &last) != RC_GAME_QUALIFIED ||
+        process_capture(ops, firmware, selection->pid, 0x5a, &last) != RC_GAME_QUALIFIED ||
         bw_stop_identity_match(&first, &last) != 1 ||
         ops->firmware(ops->opaque) != firmware || ops->self_pid(ops->opaque) != self) return RC_GAME_UNKNOWN;
     int64_t admitted_wall = expected ? expected->admitted_wall_us : 0;
@@ -125,7 +125,7 @@ int rc_game_identity_current_with_ops(const struct rc_game_identity_ops *ops,
     if (expected) prior = *expected;
     if (ops) held = *ops;
     memset(out, 0, sizeof *out);
-    if (!expected || !ops || prior.firmware != BW_STOP_PROFILE_FW ||
+    if (!expected || !ops || !bw_stop_profile_lookup(prior.firmware, BW_STOP_PROFILE_RECORD) ||
         bw_stop_identity_admit(&prior.process, prior.admitted_wall_us)) return RC_GAME_UNKNOWN;
     struct rc_game_selection selected = {prior.process.pid, prior.app_id, {0}};
     memcpy(selected.title, prior.title, sizeof selected.title);

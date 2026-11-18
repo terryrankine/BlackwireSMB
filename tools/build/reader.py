@@ -159,6 +159,7 @@ def host_tests(root, out, source, runner):
                         ("pfsc_batching", "check_pfsc_batching.py"), ("preparation_batching", "check_prepare_batching.py"),
                         ("folder_preparation_batching", "check_source_smb_batching.py"),
                         ("metadata_read_window", "check_metadata_read_window.py"),
+                        ("profile_table", "check_profile_table.py"),
                         ("catalog_admission", "check_catalog_admission.py")):
         checked = out / key
         runner.run(["python3", root / "tests/compressed" / script, "--output", checked], "host-" + key)
