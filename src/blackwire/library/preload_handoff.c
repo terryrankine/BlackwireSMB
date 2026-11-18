@@ -143,15 +143,13 @@ done:
     return result;
 }
 static int ph_encode_share(const struct bw_share_config *c,char bytes[1024],size_t *size) {
-    struct bw_share_config checked={0};int result=-1;
-    if(!c||!memchr(c->server,0,sizeof c->server)||!memchr(c->share,0,sizeof c->share)||
-       !memchr(c->user,0,sizeof c->user)||!memchr(c->password,0,sizeof c->password))goto done;
-    int n=snprintf(bytes,1024,"server=%s\nshare=%s\nuser=%s\npassword=%s\npath=\n",c->server,c->share,c->user,c->password);
-    if(n<=0||n>=1024||bw_share_parse(&checked,bytes,(size_t)n)||strcmp(c->server,checked.server)||
-       strcmp(c->share,checked.share)||strcmp(c->user,checked.user)||strcmp(c->password,checked.password))goto done;
-    *size=(size_t)n;result=0;
-done:
-    bw_share_clear(&checked);return result;
+    /* The reader gets one source only. The second share or path never
+     * enters the handoff, so SMB bytes match the historical format. */
+    struct bw_share_config one={0};int result=-1;
+    if(!c)return -1;
+    one=*c;memset(one.share2,0,sizeof one.share2);memset(one.nfs_path2,0,sizeof one.nfs_path2);one.nfs_has_path2=0;
+    if(!bw_share_encode(&one,bytes,1024,size))result=0;
+    bw_share_clear(&one);return result;
 }
 static int ph_fresh_verify(struct ph_operation *p,const char *leaf,struct bw_preload_handoff_file *file) {
     if(p->owner->retained_descriptors)
