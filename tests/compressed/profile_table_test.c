@@ -1,7 +1,7 @@
 /* Host check for the supported firmware/profile table and its single lookup.
- * Proves the refactor keeps the old exact-match behaviour: the 13.00 row is
- * accepted at 0x13000040/1096 and every other firmware or record size refuses
- * with the same -1 the earlier inline constant comparison returned. No console
+ * Proves exact-match behaviour: the 13.00 row (0x13000040/1096) and the 12.40
+ * row (0x12400009/1096) are accepted, and every other firmware, including the
+ * unmeasured 12.40 low words, or record size refuses with -1. No console
  * or kernel access; a synthetic in-memory kinfo_proc prefix drives the parser.
  * The gate checks drive each host-buildable firmware gate with an unknown
  * firmware and with 13.00, so a refusal is shown to come from the firmware.
@@ -101,6 +101,16 @@ static int gates(void){
 
     CHECK(frontend_get(UNKNOWN_FW)==-1);
     CHECK(frontend_get(BW_STOP_PROFILE_FW)==0);
+
+    /* The 12.40 row passes the same gates; its unmeasured low words do not. */
+    CHECK(idle_gate(UINT32_C(0x12400009),0)==-1 && idle_queries==1);
+    CHECK(idle_gate(UINT32_C(0x12400000),0)==-1 && idle_queries==0);
+    id_fw=UINT32_C(0x12400009); id_process=0;
+    CHECK(rc_game_identity_admit_with_ops(&id_ops,&sel,&out)==RC_GAME_ABSENT && id_process==2);
+    id_fw=UINT32_C(0x12400040); id_process=0;
+    CHECK(rc_game_identity_admit_with_ops(&id_ops,&sel,&out)==RC_GAME_UNKNOWN && id_process==0);
+    CHECK(frontend_get(UINT32_C(0x12400009))==0);
+    CHECK(frontend_get(UINT32_C(0x12400040))==-1);
     return 0;
 }
 
@@ -112,7 +122,12 @@ int main(void){
     CHECK(row->firmware==BW_STOP_PROFILE_FW && row->record==BW_STOP_PROFILE_RECORD);
     CHECK(row->off_pid==72 && row->off_start==336 && row->off_comm==447 && row->off_rssize==264);
 
-    /* An unmeasured firmware (12.40 family) refuses. */
+    /* The measured 12.40 value is accepted with the same offsets. */
+    row=bw_stop_profile_lookup(UINT32_C(0x12400009),1096);
+    CHECK(row!=NULL && row->firmware==UINT32_C(0x12400009) && row->record==1096);
+    CHECK(row->off_pid==72 && row->off_start==336 && row->off_comm==447 && row->off_rssize==264);
+
+    /* Unmeasured 12.40 low words refuse: the match is the exact value. */
     CHECK(bw_stop_profile_lookup(UINT32_C(0x12400040),BW_STOP_PROFILE_RECORD)==NULL);
     CHECK(bw_stop_profile_lookup(UINT32_C(0x12400000),BW_STOP_PROFILE_RECORD)==NULL);
     CHECK(bw_stop_profile_lookup(0,BW_STOP_PROFILE_RECORD)==NULL);
@@ -129,6 +144,10 @@ int main(void){
     CHECK(bw_stop_identity_parse(buf,sizeof buf,BW_STOP_PROFILE_FW,1234,&id)==0);
     CHECK(id.pid==1234 && id.start_sec==1700000000 && id.start_usec==123456);
     CHECK(memcmp(id.role,"eboot.bin",10)==0);
+    memset(&id,0,sizeof id);
+    CHECK(bw_stop_identity_parse(buf,sizeof buf,UINT32_C(0x12400009),1234,&id)==0);
+    CHECK(id.pid==1234 && id.start_sec==1700000000 && id.start_usec==123456);
+    CHECK(bw_stop_identity_parse(buf,sizeof buf,UINT32_C(0x12400000),1234,&id)==-1);
 
     /* Same bytes, wrong firmware: identical -1 refusal as the old constant. */
     CHECK(bw_stop_identity_parse(buf,sizeof buf,UINT32_C(0x12400040),1234,&id)==-1);

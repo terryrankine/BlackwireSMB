@@ -5,7 +5,7 @@ static uint64_t le64(const unsigned char *p) { return (uint64_t)le32(p)|((uint64
 #define ROW(fw,record,pid,start,comm,rssize) {fw,record,pid,start,comm,rssize},
 static const struct bw_stop_profile profiles[] = { BW_STOP_PROFILES(ROW) };
 #undef ROW
-_Static_assert(sizeof profiles/sizeof profiles[0]==1,"Only the measured 13.00 profile is supported");
+_Static_assert(sizeof profiles/sizeof profiles[0]==2,"Only the measured 13.00 and 12.40 profiles are supported");
 const struct bw_stop_profile *bw_stop_profile_lookup(uint32_t firmware,size_t record) {
     for (size_t i=0;i<sizeof profiles/sizeof profiles[0];i++)
         if (profiles[i].firmware==firmware && profiles[i].record==record) return &profiles[i];

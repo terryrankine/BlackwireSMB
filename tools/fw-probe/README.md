@@ -4,10 +4,11 @@ A standalone PS5 homebrew payload that measures the values a new firmware row in
 the supported-profile table would need. It is a diagnostic tool. It is not built
 into Blackwire and not referenced by `tools/build.py`.
 
-Blackwire only accepts the measured 13.00 family (`0x13000040`, 1096-byte
-kinfo_proc record). To support another firmware, such as 12.40, the profile
-table in `src/blackwire/streamreader/diagnostics/game_stop_identity.c` needs that
-firmware's record size and field offsets measured on real hardware. Blackwire
+Blackwire accepts only the measured rows in `BW_STOP_PROFILES`
+(`src/blackwire/streamreader/diagnostics/game_stop_identity.h`): 13.00
+(`0x13000040`) and 12.40 (`0x12400009`), both with a 1096-byte kinfo_proc
+record. To support another firmware, that table needs the firmware's record
+size and field offsets measured on real hardware. Blackwire
 itself exposes none of these values: `/health` returns only build id, reader
 hash and Media status, and `/api/state` carries catalogue state, so this probe
 fills the gap.
@@ -19,8 +20,8 @@ TCP port is given it also serves the same text once over TCP.
 
 - `kernel_get_fw_version()`, raw, plus the family word (`value & 0xffff0000`) and
   the low word (`value & 0x0000ffff`). On 12.40 the SDK switches on the family
-  word and has a `0x12400000` case; the low word is unknown and is exactly what
-  this reports.
+  word and has a `0x12400000` case. The low word is not in the SDK, so this
+  reports it.
 - The `KERN_PROC_PID` record for this payload's own PID, and for a PID passed as
   the first argument. For each it prints `ki_structsize` (the record size) and a
   hexdump of up to 1100 bytes with the gate offsets annotated: `ki_pid` at +72,
@@ -76,6 +77,26 @@ the output:
    own PID is known; a running game gives a real `eboot.bin` in `ki_comm`).
 
 Add one table row with those values. Do not add a row until all are measured.
+
+## Measured: 12.40
+
+One console on 12.40, read on the probe's own process (`payload.elf`), not a
+game process. These values are the 12.40 table row.
+
+| Value | Measured |
+|---|---|
+| `kernel_get_fw_version()` | `0x12400009` (family `0x12400000`, low word `0x0009`) |
+| `ki_structsize` (record size) | 1096 (`0x448`) |
+| `ki_pid` | +72 |
+| `ki_rssize` | +264 |
+| `ki_start.tv_sec` | +336 |
+| `ki_start.tv_usec` | +344 (value below 1000000) |
+| `ki_comm` | +447 (`"payload.elf"`, NUL terminated) |
+| word at +4 | 0 |
+| `KERN_PROC_PROC` read length | 151248 bytes = 138 x 1096, remainder 0 |
+
+Not yet measured on 12.40: a game process record (`eboot.bin` in `ki_comm`)
+and the other 12.40 low words.
 
 ## TODO: libkernel.sprx export capture
 
