@@ -18,8 +18,9 @@ static size_t max_marker;
 struct Config{char server[2],share[2],user[2],password[2];};
 struct Cache{unsigned placeholder;};
 struct Smb{unsigned placeholder;};
+struct Ops;
 struct bp_source{
-    int failed,ready;bp_current_fn current;void *opaque;Config config;Cache cache;Smb *smb;
+    int failed,ready;bp_current_fn current;void *opaque;Config config;Cache cache;const Ops *tp;Smb *smb;
     bp_connect_diagnostic connect_diagnostic;
     void *scratch;
 };
@@ -36,6 +37,15 @@ static void smb2_set_sign(Smb*,int n){CHECK(n==1);options++;}
 static void smb2_set_security_mode(Smb*,unsigned n){CHECK(n==(SMB2_NEGOTIATE_SIGNING_ENABLED|SMB2_NEGOTIATE_SIGNING_REQUIRED));options++;}
 static int smb2_connect_share(Smb*,const char*,const char*,const char*){shares++;errno=ECONNREFUSED;return share_result;}
 static int smb2_get_nterror(Smb*){ntreads++;CHECK(errno==ECONNREFUSED);return ntstatus;}
+/* Mirrors source.c's SMB table; source_test.c drives the real one. */
+struct Ops{Smb *(*init)();void (*configure)(Smb*,const Config*,unsigned*);int (*connect)(Smb*,const Config*);uint32_t (*status)(Smb*);};
+static void smb_configure(Smb *s,const Config *c,unsigned *returned){
+    smb2_set_timeout(s,10);(*returned)++;smb2_set_user(s,c->user);(*returned)++;smb2_set_password(s,c->password);(*returned)++;
+    smb2_set_sign(s,1);(*returned)++;smb2_set_security_mode(s,SMB2_NEGOTIATE_SIGNING_ENABLED|SMB2_NEGOTIATE_SIGNING_REQUIRED);(*returned)++;
+}
+static int smb_connect(Smb *s,const Config *c){return smb2_connect_share(s,c->server,c->share,c->user);}
+static uint32_t smb_status(Smb *s){return (uint32_t)smb2_get_nterror(s);}
+static const Ops smb_ops={smb2_init_context,smb_configure,smb_connect,smb_status};
 static void bw_share_clear(Config *p){clears++;std::memset(p,0,sizeof *p);errno=ERANGE;}
 static void *scratch_malloc(size_t bytes){scratch_allocations++;CHECK(bytes==BP_COALESCE_BYTES);errno=ENOMEM;return scratch_failure?nullptr:std::malloc(bytes);}
 int bp_source_disconnect(bp_source *p){disconnects++;std::free(p->scratch);p->scratch=nullptr;p->smb=nullptr;p->ready=0;p->failed=1;errno=EIO;return 0;}
@@ -71,7 +81,7 @@ static void reset(){
     std::free(instance.scratch);
     guards=caches=contexts=options=shares=ntreads=clears=disconnects=logs=guard_failure=borrowed_caches=source_closes=0;
     scratch_allocations=performance_snapshots=source_observes=0;scratch_failure=maximum_performance=false;
-    cache_result=share_result=ntstatus=0;cache_errno=ENOMEM;context_failure=false;instance={};instance.current=guard;source=&instance;
+    cache_result=share_result=ntstatus=0;cache_errno=ENOMEM;context_failure=false;instance={};instance.current=guard;instance.tp=&smb_ops;source=&instance;
     status=2;metadata_ready=true;finished=true;metadata_users=0;canceled=false;cache_owner=nullptr;errno=0;marker[0]=0;
 }
 static bp_connect_diagnostic diagnostic(){bp_connect_diagnostic d{};bp_source_connect_diagnostic(source,&d);return d;}
@@ -92,7 +102,7 @@ int main(){
     reset();cases++;cache_result=INT_MIN;CHECK(!bp_worker_initialize());CHECK(std::strstr(marker,"connectRaw=-2147483648"));
     reset();cases++;cache_result=-2;cache_errno=0;CHECK(!bp_worker_initialize());d=diagnostic();CHECK(d.stage==BP_CONNECT_CACHE&&d.raw==-2&&d.error==0&&borrowed_caches==1&&!contexts&&!shares&&!options&&cache_owner.load()==source);CHECK(bp_runtime_release()==-1&&source_closes==0);bp_worker_finish();CHECK(!cache_owner.load()&&finished.load());CHECK(bp_runtime_release()==0&&source_closes==1&&source==nullptr);
     reset();cases++;CHECK(bp_worker_initialize());CHECK(cache_owner.load()==source&&borrowed_caches==1&&!finished.load());CHECK(bp_runtime_release()==-1&&source_closes==0);bp_worker_finish();CHECK(disconnects==1&&!cache_owner.load()&&finished.load());metadata_users=1;CHECK(bp_runtime_release()==-1&&source_closes==0);metadata_users=0;CHECK(bp_runtime_release()==0&&source_closes==1&&!source);
-    reset();cases++;CHECK(bp_worker_initialize());bp_source *first=source;bp_source next{};next.current=guard;source=&next;status=2;unsigned before=caches;CHECK(!bp_worker_initialize());CHECK(cache_owner.load()==first&&caches==before&&shares==1&&std::strstr(marker,"result=-16 ready=0"));CHECK(bp_runtime_release()==-1&&source_closes==0);source=first;bp_worker_finish();CHECK(!cache_owner.load());
+    reset();cases++;CHECK(bp_worker_initialize());bp_source *first=source;bp_source next{};next.current=guard;next.tp=&smb_ops;source=&next;status=2;unsigned before=caches;CHECK(!bp_worker_initialize());CHECK(cache_owner.load()==first&&caches==before&&shares==1&&std::strstr(marker,"result=-16 ready=0"));CHECK(bp_runtime_release()==-1&&source_closes==0);source=first;bp_worker_finish();CHECK(!cache_owner.load());
     reset();cases++;maximum_performance=true;errno=EBUSY;bp_runtime_report_performance();CHECK(performance_snapshots==1&&logs==2&&errno==EBUSY&&std::strstr(marker,"clockFaults=18446744073709551615"));
     reset();cases++;CHECK(bp_worker_initialize());CHECK(scratch_allocations==1&&source->scratch);bp_worker_finish();CHECK(performance_snapshots==1&&logs==3&&!source->scratch&&disconnects==1&&!cache_owner.load());
     reset();cases++;CHECK(bp_worker_initialize());CHECK(source_observes==1);bp_worker_finish();

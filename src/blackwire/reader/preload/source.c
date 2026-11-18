@@ -32,14 +32,68 @@
 #define BP_MAP_LIMIT (40u*1024u*1024u)
 #define BP_HANDLES 16u
 #define BP_READ_LIMIT (64u*1024u*1024u)
-struct bp_handle {struct smb2fh *fh;struct smb2_stat_64 admitted;uint32_t id;uint64_t age;};
+/* Transport seam: one SMB table today, so a second transport changes no
+ * caller. Opaque tags keep call sites typed without spreading libsmb2 types.
+ * Metadata stays smb2_stat_64 until the reader adopts bw_stat. Async
+ * completions always land in metadata_done: no callback storage is added. */
+struct bp_transport;struct bp_file;
+struct bp_transport_ops {
+    struct bp_transport *(*init)(void);
+    void (*configure)(struct bp_transport *,const struct bw_share_config *,unsigned *returned);
+    int (*connect)(struct bp_transport *,const struct bw_share_config *);
+    uint32_t (*status)(struct bp_transport *);
+    void (*destroy)(struct bp_transport *);
+    int (*stat)(struct bp_transport *,const char *,struct smb2_stat_64 *);
+    int (*fstat)(struct bp_transport *,struct bp_file *,struct smb2_stat_64 *);
+    struct bp_file *(*open)(struct bp_transport *,const char *);
+    int (*close)(struct bp_transport *,struct bp_file *);
+    int (*stat_async)(struct bp_transport *,const char *,struct smb2_stat_64 *,void *);
+    int (*fstat_async)(struct bp_transport *,struct bp_file *,struct smb2_stat_64 *,void *);
+    int (*fd)(struct bp_transport *);
+    int (*events)(struct bp_transport *);
+    int (*service)(struct bp_transport *,int);
+    int (*pread)(struct bp_transport *,struct bp_file *,uint8_t *,uint32_t,uint64_t);
+    uint32_t (*max_read)(struct bp_transport *);
+};
+static void metadata_done(void *,int);
+#define SMB(t) ((struct smb2_context *)(t))
+#define SMBFH(f) ((struct smb2fh *)(f))
+static struct bp_transport *smb_init(void){return (struct bp_transport *)smb2_init_context();}
+/* Each void setter is counted as it returns, matching the connect diagnostic. */
+static void smb_configure(struct bp_transport *t,const struct bw_share_config *c,unsigned *returned){
+    smb2_set_timeout(SMB(t),10);(*returned)++;
+    smb2_set_user(SMB(t),c->user);(*returned)++;
+    smb2_set_password(SMB(t),c->password);(*returned)++;
+    smb2_set_sign(SMB(t),1);(*returned)++;
+    smb2_set_security_mode(SMB(t),SMB2_NEGOTIATE_SIGNING_ENABLED|SMB2_NEGOTIATE_SIGNING_REQUIRED);(*returned)++;
+}
+static int smb_connect(struct bp_transport *t,const struct bw_share_config *c){return smb2_connect_share(SMB(t),c->server,c->share,c->user);}
+static uint32_t smb_status(struct bp_transport *t){return (uint32_t)smb2_get_nterror(SMB(t));}
+static void smb_destroy(struct bp_transport *t){smb2_destroy_context(SMB(t));}
+static int smb_stat(struct bp_transport *t,const char *path,struct smb2_stat_64 *st){return smb2_stat(SMB(t),path,st);}
+static int smb_fstat(struct bp_transport *t,struct bp_file *f,struct smb2_stat_64 *st){return smb2_fstat(SMB(t),SMBFH(f),st);}
+static struct bp_file *smb_open(struct bp_transport *t,const char *path){return (struct bp_file *)smb2_open(SMB(t),path,O_RDONLY);}
+static int smb_close(struct bp_transport *t,struct bp_file *f){return smb2_close(SMB(t),SMBFH(f));}
+static void smb_metadata_done(struct smb2_context *smb,int status,void *data,void *opaque){(void)smb;(void)data;metadata_done(opaque,status);}
+static int smb_stat_async(struct bp_transport *t,const char *path,struct smb2_stat_64 *st,void *opaque){return smb2_stat_async(SMB(t),path,st,smb_metadata_done,opaque);}
+static int smb_fstat_async(struct bp_transport *t,struct bp_file *f,struct smb2_stat_64 *st,void *opaque){return smb2_fstat_async(SMB(t),SMBFH(f),st,smb_metadata_done,opaque);}
+static int smb_fd(struct bp_transport *t){return smb2_get_fd(SMB(t));}
+static int smb_events(struct bp_transport *t){return smb2_which_events(SMB(t));}
+static int smb_service(struct bp_transport *t,int revents){return smb2_service(SMB(t),revents);}
+static int smb_pread(struct bp_transport *t,struct bp_file *f,uint8_t *out,uint32_t size,uint64_t at){return smb2_pread(SMB(t),SMBFH(f),out,size,at);}
+static uint32_t smb_max_read(struct bp_transport *t){return smb2_get_max_read_size(SMB(t));}
+#undef SMBFH
+#undef SMB
+static const struct bp_transport_ops bp_smb_ops={smb_init,smb_configure,smb_connect,smb_status,smb_destroy,
+    smb_stat,smb_fstat,smb_open,smb_close,smb_stat_async,smb_fstat_async,smb_fd,smb_events,smb_service,smb_pread,smb_max_read};
+struct bp_handle {struct bp_file *fh;struct smb2_stat_64 admitted;uint32_t id;uint64_t age;};
 struct bp_source {
     struct bw_reader_selection selected;
     struct bw_source_binding binding;
     struct bw_share_config config;
     struct bw_manifest map;
     void *map_bytes;uint32_t *lookup;size_t lookup_count;
-    struct smb2_context *smb;struct bw_cache cache;struct bp_handle handles[BP_HANDLES];
+    const struct bp_transport_ops *tp;struct bp_transport *smb;struct bw_cache cache;struct bp_handle handles[BP_HANDLES];
     struct bw_container *image;struct bw_container_manifest image_files;
     uint64_t image_mtime;
     uint8_t original_map_sha256[32],original_generation_sha256[32];unsigned projected;
@@ -77,19 +131,19 @@ static void progress_end(struct bp_source *p,int64_t raw,int error,unsigned fail
     p->progress.error_observed=failed;progress_signal(p);
 }
 static int named_stat(struct bp_source *p,const char *path,struct smb2_stat_64 *st,unsigned stage){
-    progress_begin(p,stage);struct bp_stamp stamp=perf_begin(p,&p->performance.named_stat);int rc=smb2_stat(p->smb,path,st);int error=errno;
+    progress_begin(p,stage);struct bp_stamp stamp=perf_begin(p,&p->performance.named_stat);int rc=p->tp->stat(p->smb,path,st);int error=errno;
     perf_end(p,&p->performance.named_stat,stamp);progress_end(p,rc,error,rc!=0);errno=error;return rc;
 }
-static int held_stat(struct bp_source *p,struct smb2fh *fh,struct smb2_stat_64 *st,unsigned stage){
-    progress_begin(p,stage);struct bp_stamp stamp=perf_begin(p,&p->performance.held_stat);int rc=smb2_fstat(p->smb,fh,st);int error=errno;
+static int held_stat(struct bp_source *p,struct bp_file *fh,struct smb2_stat_64 *st,unsigned stage){
+    progress_begin(p,stage);struct bp_stamp stamp=perf_begin(p,&p->performance.held_stat);int rc=p->tp->fstat(p->smb,fh,st);int error=errno;
     perf_end(p,&p->performance.held_stat,stamp);progress_end(p,rc,error,rc!=0);errno=error;return rc;
 }
-static struct smb2fh *open_file(struct bp_source *p,const char *path){
-    progress_begin(p,BP_SOURCE_OPEN);struct bp_stamp stamp=perf_begin(p,&p->performance.open);struct smb2fh *fh=smb2_open(p->smb,path,O_RDONLY);int error=errno;
+static struct bp_file *open_file(struct bp_source *p,const char *path){
+    progress_begin(p,BP_SOURCE_OPEN);struct bp_stamp stamp=perf_begin(p,&p->performance.open);struct bp_file *fh=p->tp->open(p->smb,path);int error=errno;
     perf_end(p,&p->performance.open,stamp);progress_end(p,fh?1:0,error,!fh);errno=error;return fh;
 }
-static int close_file(struct bp_source *p,struct smb2fh *fh,unsigned stage){
-    progress_begin(p,stage);struct bp_stamp stamp=perf_begin(p,&p->performance.close);int rc=smb2_close(p->smb,fh);int error=errno;
+static int close_file(struct bp_source *p,struct bp_file *fh,unsigned stage){
+    progress_begin(p,stage);struct bp_stamp stamp=perf_begin(p,&p->performance.close);int rc=p->tp->close(p->smb,fh);int error=errno;
     perf_end(p,&p->performance.close,stamp);progress_end(p,rc,error,rc!=0);errno=error;return rc;
 }
 static int numeric_ipv4(const char *s){
@@ -107,13 +161,13 @@ static int poison(struct bp_source *p,unsigned stage){
         struct bp_source_failure *f=&p->progress.first_poison;f->valid=1;f->stage=stage;f->sequence=p->progress.sequence;
         if(p->progress.stage==stage&&!p->progress.in_flight&&p->progress.error_observed){
             f->raw=p->progress.raw;f->error=p->progress.error;f->error_observed=1;
-            if(p->smb){f->ntstatus=(uint32_t)smb2_get_nterror(p->smb);f->ntstatus_observed=1;}
+            if(p->smb){f->ntstatus=p->tp->status(p->smb);f->ntstatus_observed=1;}
         }
     }
     p->failed=1;p->progress.poisoned=1;progress_signal(p);errno=saved;
     /* A failed synchronous SMB call may still own its destination. Destroy
      * on this SAME worker before returning it to the cache/caller. */
-    if(p->smb){smb2_destroy_context(p->smb);p->smb=NULL;}
+    if(p->smb){p->tp->destroy(p->smb);p->smb=NULL;}
     for(unsigned i=0;i<BP_HANDLES;i++)p->handles[i].fh=NULL;
     errno=saved;return -1;
 }
@@ -130,8 +184,8 @@ struct bp_metadata_op {
     struct bp_source *source;struct bp_io_performance *performance;
     struct bp_stamp stamp;int done,raw,error;unsigned stage;
 };
-static void metadata_done(struct smb2_context *smb,int status,void *data,void *opaque){
-    (void)smb;(void)data;struct bp_metadata_op *op=opaque;int error=errno;
+static void metadata_done(void *opaque,int status){
+    struct bp_metadata_op *op=opaque;int error=errno;
     if(op->done)return;
     op->raw=status;op->error=error;op->done=1;
     perf_end(op->source,op->performance,op->stamp);errno=error;
@@ -140,27 +194,27 @@ static int metadata_failure(struct bp_source *p,struct bp_metadata_op *op,int ra
     p->progress.stage=op->stage;progress_end(p,raw,error,1);
     return poison(p,op->stage);
 }
-static int paired_stat(struct bp_source *p,const char *path,struct smb2fh *fh,
+static int paired_stat(struct bp_source *p,const char *path,struct bp_file *fh,
     struct smb2_stat_64 *named,struct smb2_stat_64 *held,unsigned ns,unsigned hs){
     if(current(p)||!fh)return -1;
     struct bp_metadata_op ops[2]={{.source=p,.performance=&p->performance.named_stat,.stage=ns},
                                   {.source=p,.performance=&p->performance.held_stat,.stage=hs}};
     progress_begin(p,ns);ops[0].stamp=perf_begin(p,ops[0].performance);
-    int rc=smb2_stat_async(p->smb,path,named,metadata_done,&ops[0]);int error=errno;
+    int rc=p->tp->stat_async(p->smb,path,named,&ops[0]);int error=errno;
     if(rc<0){if(!ops[0].done)perf_end(p,ops[0].performance,ops[0].stamp);return metadata_failure(p,&ops[0],rc,error);}
     progress_begin(p,hs);ops[1].stamp=perf_begin(p,ops[1].performance);
-    rc=smb2_fstat_async(p->smb,fh,held,metadata_done,&ops[1]);error=errno;
+    rc=p->tp->fstat_async(p->smb,fh,held,&ops[1]);error=errno;
     if(rc<0){if(!ops[1].done)perf_end(p,ops[1].performance,ops[1].stamp);return metadata_failure(p,&ops[1],rc,error);}
     while(!ops[0].done||!ops[1].done){
         struct bp_metadata_op *pending=ops[0].done?&ops[1]:&ops[0];
-        struct pollfd fd={smb2_get_fd(p->smb),(short)smb2_which_events(p->smb),0};
+        struct pollfd fd={p->tp->fd(p->smb),(short)p->tp->events(p->smb),0};
         if(fd.fd<0)return metadata_failure(p,pending,-1,EIO);
         rc=poll(&fd,1,250);error=errno;
         if(rc<0&&error==EINTR)continue;
         if(rc<0)return metadata_failure(p,pending,rc,error);
         /* service(0) also expires timed-out PDUs; polling without servicing on
          * an idle socket could otherwise leave callback storage live forever. */
-        rc=smb2_service(p->smb,rc?fd.revents:0);error=errno;
+        rc=p->tp->service(p->smb,rc?fd.revents:0);error=errno;
         if(rc<0)return metadata_failure(p,pending,rc,error);
         for(unsigned i=0;i<2;i++)if(ops[i].done&&ops[i].raw)
             return metadata_failure(p,&ops[i],ops[i].raw,ops[i].error);
@@ -195,13 +249,13 @@ static int image_payload(void *opaque,uint64_t at,void *output,size_t size){
     struct bp_source *p=opaque;struct bp_handle *h=&p->handles[0];
     int state=image_current(p);if(state)return state;
     if(!h->fh||size>BW_PFSC_MAX_READ||at>h->admitted.smb2_size||size>h->admitted.smb2_size-at)return -1;
-    uint32_t maximum=smb2_get_max_read_size(p->smb);if(!maximum)return poison(p,BP_SOURCE_MAX_READ);
+    uint32_t maximum=p->tp->max_read(p->smb);if(!maximum)return poison(p,BP_SOURCE_MAX_READ);
     for(size_t done=0;done<size;){
         state=image_current(p);if(state)return state;
         uint32_t want=(uint32_t)(size-done);if(want>maximum)want=maximum;
         if(want>p->performance.largest_pread_request)p->performance.largest_pread_request=want;
         progress_begin(p,BP_SOURCE_PREAD);struct bp_stamp stamp=perf_begin(p,&p->performance.pread);
-        int got=smb2_pread(p->smb,h->fh,(uint8_t *)output+done,want,at+done);int error=errno;
+        int got=p->tp->pread(p->smb,h->fh,(uint8_t *)output+done,want,at+done);int error=errno;
         perf_end(p,&p->performance.pread,stamp);progress_end(p,got,error,got<=0||(uint32_t)got>want);errno=error;
         if(got<=0||(uint32_t)got>want)return poison(p,BP_SOURCE_PREAD);
         if((uint64_t)got>UINT64_MAX-p->network)return poison(p,BP_SOURCE_COUNTER);
@@ -221,7 +275,7 @@ static int image_fence(struct bp_source *p,int final){
  * its owned handle/workspace on this same worker; keep the source connection
  * and immutable admission so a subsequent job can initialize it afresh. */
 static struct bp_handle *image_open_canceled(struct bp_source *p){
-    struct bp_handle *h=&p->handles[0];struct smb2fh *held=h->fh;h->fh=NULL;
+    struct bp_handle *h=&p->handles[0];struct bp_file *held=h->fh;h->fh=NULL;
     bw_container_manifest_destroy(&p->image_files);free(p->image);p->image=NULL;
     if(held&&close_file(p,held,BP_SOURCE_DISCONNECT_CLOSE))poison(p,BP_SOURCE_DISCONNECT_CLOSE);
     return NULL;
@@ -274,7 +328,7 @@ static struct bp_handle *remote(struct bp_source *p,uint32_t id){
     if(named.smb2_type!=SMB2_TYPE_FILE||named.smb2_size!=row.size||named.smb2_mtime!=row.mtime_sec){poison(p,BP_SOURCE_ENTRY_METADATA);return NULL;}
     if(!slot){
         slot=victim;
-        if(slot->fh){struct smb2fh *old=slot->fh;slot->fh=NULL;if(close_file(p,old,BP_SOURCE_EVICT_CLOSE)){poison(p,BP_SOURCE_EVICT_CLOSE);return NULL;}}
+        if(slot->fh){struct bp_file *old=slot->fh;slot->fh=NULL;if(close_file(p,old,BP_SOURCE_EVICT_CLOSE)){poison(p,BP_SOURCE_EVICT_CLOSE);return NULL;}}
         slot->fh=open_file(p,path);
         if(!slot->fh){poison(p,BP_SOURCE_OPEN);return NULL;}
         slot->admitted=named;slot->id=id;
@@ -288,7 +342,7 @@ static struct bp_handle *remote(struct bp_source *p,uint32_t id){
 /* A synchronous logical read pins one exact slot/handle. The cache never
  * retains this stack-owned scope and no block loader opens or evicts a file. */
 struct bp_read_scope {
-    struct bp_source *source;struct bp_handle *slot;struct smb2fh *fh;uint32_t id;
+    struct bp_source *source;struct bp_handle *slot;struct bp_file *fh;uint32_t id;
     uint64_t last_block,staged_at;size_t staged_size;
 };
 static int scope_current(const struct bp_read_scope *scope,uint32_t id){
@@ -341,14 +395,14 @@ static int load(void *opaque,uint32_t id,uint64_t block,uint8_t *dest,size_t cap
         count(&p->performance.coalesced_runs,1);count(&p->performance.coalesced_blocks,blocks);
         memcpy(dest,p->scratch,n);*out_size=n;return 0;
     }
-    uint32_t maximum=smb2_get_max_read_size(p->smb);if(!maximum)return poison(p,BP_SOURCE_MAX_READ);
+    uint32_t maximum=p->tp->max_read(p->smb);if(!maximum)return poison(p,BP_SOURCE_MAX_READ);
     size_t done=0;
     while(done<run){
         if(scope_current(scope,id))return -1;
         uint32_t want=(uint32_t)(run-done);if(want>maximum)want=maximum;
         if(want>p->performance.largest_pread_request)p->performance.largest_pread_request=want;
         progress_begin(p,BP_SOURCE_PREAD);struct bp_stamp stamp=perf_begin(p,&p->performance.pread);
-        int got=smb2_pread(p->smb,scope->fh,p->scratch+done,want,at+done);int error=errno;
+        int got=p->tp->pread(p->smb,scope->fh,p->scratch+done,want,at+done);int error=errno;
         perf_end(p,&p->performance.pread,stamp);progress_end(p,got,error,got<=0||(uint32_t)got>want);errno=error;
         if(got<=0||(uint32_t)got>want){poison(p,BP_SOURCE_PREAD);return -1;}
         if((uint64_t)got>UINT64_MAX-p->network){poison(p,BP_SOURCE_COUNTER);return -1;}
@@ -372,7 +426,7 @@ static int source_admit(struct bp_source **out,const void *map,size_t map_size,
     if(!map||!map_size||map_size>BP_MAP_LIMIT||!guard||guard(opaque))return -1;
     struct bp_source *p=calloc(1,sizeof *p);struct bw_share_config config={0};
     if(!p)return -1;
-    p->current=guard;p->opaque=opaque;
+    p->current=guard;p->opaque=opaque;p->tp=&bp_smb_ops;
     struct bw_provider_binding identity;
     if(bw_reader_selection_parse(&p->selected,selection,selection_size)||
        (bw_reader_selection_is_projection(&p->selected)?(!envelope||!envelope_size):(envelope||envelope_size))||
@@ -436,17 +490,13 @@ static int connect_source(struct bp_source *p,void *storage,size_t storage_size,
     if(raw){connect_failure(p,BP_CONNECT_CACHE,raw,error);goto fail;}
     p->scratch=malloc(BP_COALESCE_BYTES);error=errno;
     if(!p->scratch){connect_failure(p,BP_CONNECT_SCRATCH,0,error);goto fail;}
-    p->smb=smb2_init_context();error=errno;
+    p->smb=p->tp->init();error=errno;
     if(!p->smb){connect_failure(p,BP_CONNECT_CONTEXT,0,error);goto fail;}
-    smb2_set_timeout(p->smb,10);p->connect_diagnostic.options_returned++;
-    smb2_set_user(p->smb,p->config.user);p->connect_diagnostic.options_returned++;
-    smb2_set_password(p->smb,p->config.password);p->connect_diagnostic.options_returned++;
-    smb2_set_sign(p->smb,1);p->connect_diagnostic.options_returned++;
-    smb2_set_security_mode(p->smb,SMB2_NEGOTIATE_SIGNING_ENABLED|SMB2_NEGOTIATE_SIGNING_REQUIRED);p->connect_diagnostic.options_returned++;
-    raw=smb2_connect_share(p->smb,p->config.server,p->config.share,p->config.user);error=errno;
+    p->tp->configure(p->smb,&p->config,&p->connect_diagnostic.options_returned);
+    raw=p->tp->connect(p->smb,&p->config);error=errno;
     if(raw<0){
         connect_failure(p,BP_CONNECT_SHARE,raw,error);
-        p->connect_diagnostic.ntstatus=(uint32_t)smb2_get_nterror(p->smb);p->connect_diagnostic.ntstatus_valid=1;
+        p->connect_diagnostic.ntstatus=p->tp->status(p->smb);p->connect_diagnostic.ntstatus_valid=1;
         goto fail;
     }
     raw=p->current(p->opaque);error=errno;
@@ -535,10 +585,10 @@ int bp_source_disconnect(struct bp_source *p){
     int result=0;
     if(p->smb){
         for(unsigned i=0;i<BP_HANDLES;i++)if(p->handles[i].fh){
-            struct smb2fh *h=p->handles[i].fh;p->handles[i].fh=NULL;
+            struct bp_file *h=p->handles[i].fh;p->handles[i].fh=NULL;
             if(close_file(p,h,BP_SOURCE_DISCONNECT_CLOSE)){result=-1;poison(p,BP_SOURCE_DISCONNECT_CLOSE);break;}
         }
-        if(p->smb){smb2_destroy_context(p->smb);p->smb=NULL;}
+        if(p->smb){p->tp->destroy(p->smb);p->smb=NULL;}
     }
     free(p->scratch);p->scratch=NULL;
     bw_container_manifest_destroy(&p->image_files);free(p->image);p->image=NULL;
