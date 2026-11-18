@@ -42,8 +42,9 @@ int bw_provider_binding_select(struct bw_provider_binding *out,struct bw_share_c
     if (!game || strnlen(game,75)!=74 || !source || !title ||
         !memchr(connection->share2,0,sizeof connection->share2)) goto done;
     for (unsigned i=0;i<2;i++) {
-        if (i && !*connection->share2) break;
-        if (bw_share_select(&candidate,connection,i?connection->share2:NULL) ||
+        const char *name=bw_share_source_name(connection,i);
+        if (i && !name) break;
+        if (bw_share_select_source(&candidate,connection,i?name:NULL) ||
             bw_provider_binding_init(&probe,&candidate,source,title,kind)) goto done;
         if (!strcmp(probe.binding.game,game)) {selected=probe;chosen=candidate;matches++;}
         bw_share_clear(&candidate);
