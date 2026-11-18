@@ -40,10 +40,14 @@ int main(void){
     exchange("GET / HTTP/1.1\r\nHost: 127.0.0.1:5918\r\n\r\n",1,response);C(strstr(response,"HTTP/1.0 200 ")&&strstr(response,"\r\nX-Frame-Options: DENY\r\n")&&strstr(response,"\r\nContent-Security-Policy: frame-ancestors 'none'\r\n")&&
         strstr(response,"\r\nX-Content-Type-Options: nosniff\r\n")&&strstr(response,"\r\nReferrer-Policy: no-referrer\r\n")&&!strstr(response,"script-src"));
     exchange("GET /missing HTTP/1.1\r\nHost: evil.invalid\r\n\r\n",1,response);C(strstr(response,"HTTP/1.0 421 ")&&strstr(response,"\r\nX-Frame-Options: DENY\r\n"));
-    /* DNS rebinding: only loopback names and literal IPv4 on this port are served. */
-    const char *good[]={"127.0.0.1","127.0.0.1:5918","localhost","LocalHost:5918","192.0.2.20","192.0.2.20:5918"};
+    /* DNS rebinding: only loopback names and literal loopback, private or
+     * link-local IPv4 on this port are served. */
+    const char *good[]={"127.0.0.1","127.0.0.1:5918","localhost","LocalHost:5918","192.168.1.20","192.168.1.20:5918","127.255.255.254","10.0.0.1","10.255.255.255",
+        "172.16.0.1","172.31.255.255","192.168.0.0","192.168.255.255","169.254.0.1","169.254.255.255:5918"};
     for(unsigned i=0;i<sizeof good/sizeof *good;i++){snprintf(request,sizeof request,"GET / HTTP/1.1\r\nHost: %s\r\n\r\n",good[i]);exchange(request,1,response);C(strstr(response,"HTTP/1.0 200 "));}
-    const char *bad[]={"evil.invalid","evil.invalid:5918","127.0.0.1:80","127.0.0.1:","localhost.evil.invalid","localhost:59180","1.2.3.4.5","256.0.0.1","0x7f.0.0.1","127.1",":5918","[::1]:5918"};
+    const char *bad[]={"evil.invalid","evil.invalid:5918","127.0.0.1:80","127.0.0.1:","localhost.evil.invalid","localhost:59180","1.2.3.4.5","256.0.0.1","0x7f.0.0.1","127.1",":5918","[::1]:5918",
+        "192.0.2.20","192.0.2.20:5918","8.8.8.8","0.0.0.0","255.255.255.255","126.255.255.255","128.0.0.1","9.255.255.255","11.0.0.0","172.15.255.255","172.32.0.0",
+        "192.167.255.255","192.169.0.0","169.253.255.255","169.255.0.0"};
     before=normal_requests;
     for(unsigned i=0;i<sizeof bad/sizeof *bad;i++){snprintf(request,sizeof request,"GET /api/state HTTP/1.1\r\nHost: %s\r\n\r\n",bad[i]);exchange(request,1,response);C(strstr(response,"HTTP/1.0 421 ")&&normal_requests==before);}
     exchange("GET / HTTP/1.1\r\n\r\n",1,response);C(strstr(response,"HTTP/1.0 400 "));
@@ -59,7 +63,7 @@ int main(void){
     before=normal_requests;
     for(unsigned i=0;i<sizeof refused/sizeof *refused;i++){snprintf(request,sizeof request,post,"127.0.0.1:5918",refused[i]);exchange(request,1,response);C((strstr(response,"HTTP/1.0 403 ")||(i==5&&strstr(response,"HTTP/1.0 400 ")))&&normal_requests==before);}
     exchange("POST /api/refresh HTTP/1.0\r\nContent-Type: application/json\r\nOrigin: http://127.0.0.1:5918\r\nContent-Length: 2\r\n\r\n{}",1,response);C(strstr(response,"HTTP/1.0 400 ")&&normal_requests==before);
-    snprintf(request,sizeof request,post,"192.0.2.20:5918","Origin: http://192.0.2.20:5918\r\n");exchange(request,1,response);C(strstr(response,"HTTP/1.0 404 ")&&normal_requests==before+2);
+    snprintf(request,sizeof request,post,"192.168.1.20:5918","Origin: http://192.168.1.20:5918\r\n");exchange(request,1,response);C(strstr(response,"HTTP/1.0 404 ")&&normal_requests==before+2);
     snprintf(request,sizeof request,post,"127.0.0.1:5918","Origin: HTTP://127.0.0.1:5918\r\n");exchange(request,1,response);C(strstr(response,"HTTP/1.0 404 ")&&normal_requests==before+4);
     snprintf(request,sizeof request,post,"127.0.0.1:5918","");exchange(request,1,response);C(strstr(response,"HTTP/1.0 404 ")&&normal_requests==before+6);
     /* A peer dripping bytes inside the per-read timeout is still cut off by the

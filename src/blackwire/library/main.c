@@ -776,12 +776,18 @@ static int native_header(const char *request,const char *key,char *out,size_t ca
   }return found;
 }
 /* DNS rebinding: a hostile page reaches this listener under its own name.
- * Serve only loopback names and literal IPv4 addresses on this port. */
+ * Serve only loopback names and literal loopback, private or link-local IPv4
+ * addresses on this port. The console serves a home LAN. A public literal
+ * means the port is reached from outside, which this page must not serve. */
+static int http_address_local(uint32_t a){
+  return (a>>24)==127||(a>>24)==10||(a>>20)==0xac1||(a>>16)==0xc0a8||(a>>16)==0xa9fe;
+}
 static int http_host_allowed(const char *host){
   char port[8],literal[16];struct in_addr address;const char *colon=strchr(host,':');size_t name=colon?(size_t)(colon-host):strlen(host);
   snprintf(port,sizeof port,":%d",PORT);if(colon&&strcmp(colon,port))return 0;
   if(name==9&&!strncasecmp(host,"localhost",9))return 1;
-  if(!name||name>=sizeof literal)return 0;memcpy(literal,host,name);literal[name]=0;return inet_pton(AF_INET,literal,&address)==1;
+  if(!name||name>=sizeof literal)return 0;memcpy(literal,host,name);literal[name]=0;
+  return inet_pton(AF_INET,literal,&address)==1&&http_address_local(ntohl(address.s_addr));
 }
 /* A browser always names the page that sent a POST. Native clients send no
  * Origin, so only a present Origin for another host is refused. */
