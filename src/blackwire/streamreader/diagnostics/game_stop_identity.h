@@ -13,6 +13,13 @@ struct bw_stop_profile { uint32_t firmware; uint32_t record; uint16_t off_pid,of
 /* Return the supported profile for this firmware and record size, or NULL. A
  * firmware or record outside the table refuses exactly as the old constants. */
 const struct bw_stop_profile *bw_stop_profile_lookup(uint32_t firmware,size_t record);
+/* The measured rows, as X(firmware,record,pid,start,comm,rssize). The table and
+ * the PS5 build's kinfo_proc asserts both expand this one list, so a row cannot
+ * name offsets the SDK layout does not have. Usec is read at start+8.
+ * 13.00 (0x13000040): 1096-byte record measured on a console.
+ * Add a row only once a firmware's record size and offsets are measured. */
+#define BW_STOP_PROFILES(X) \
+    X(BW_STOP_PROFILE_FW,BW_STOP_PROFILE_RECORD,72,336,447,264)
 /* Parse ONLY the empirical public prefix approved for this isolated control.
  * Nonzero return is UNKNOWN; sanitized private pointer fields are not read. */
 int bw_stop_identity_parse(const void *,size_t,uint32_t,int32_t,struct bw_stop_identity *);

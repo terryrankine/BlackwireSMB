@@ -2,13 +2,9 @@
 #include <string.h>
 static uint32_t le32(const unsigned char *p) { return (uint32_t)p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24); }
 static uint64_t le64(const unsigned char *p) { return (uint64_t)le32(p)|((uint64_t)le32(p+4)<<32); }
-/* Supported firmware/profile table. 13.00 (0x13000040) is the only measured
- * console: 1096-byte kinfo_proc, pid at +72, ki_start at +336 (usec at +344),
- * ki_comm at +447, ki_rssize at +264. Match startup_runtime_idle_ps5.c asserts.
- * Add a row only once a firmware's record size and offsets are measured. */
-static const struct bw_stop_profile profiles[] = {
-    {BW_STOP_PROFILE_FW,BW_STOP_PROFILE_RECORD,72,336,447,264},
-};
+#define ROW(fw,record,pid,start,comm,rssize) {fw,record,pid,start,comm,rssize},
+static const struct bw_stop_profile profiles[] = { BW_STOP_PROFILES(ROW) };
+#undef ROW
 _Static_assert(sizeof profiles/sizeof profiles[0]==1,"Only the measured 13.00 profile is supported");
 const struct bw_stop_profile *bw_stop_profile_lookup(uint32_t firmware,size_t record) {
     for (size_t i=0;i<sizeof profiles/sizeof profiles[0];i++)
