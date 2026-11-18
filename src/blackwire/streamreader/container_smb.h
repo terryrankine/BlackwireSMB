@@ -26,6 +26,9 @@ struct bw_container_smb {
     struct smb2_context **transport_owner;
     struct smb2fh *handle;
     struct bw_stat admitted;
+    /* Admission stat destination. A sync smb2_stat that fails in its wait
+     * can still get a late reply written here, so it must outlive open. */
+    struct smb2_stat_64 admitted_raw;
     char path[1024];
     uint64_t read_calls,read_bytes,generation_checks;
     int failed,last_transport_error;

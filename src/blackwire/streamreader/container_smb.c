@@ -125,8 +125,7 @@ static int open_image(struct bw_container_smb *p,struct smb2_context *smb,const 
     size_t length=strnlen(path,sizeof p->path);
     if (!length || length>=sizeof p->path || bw_manifest_validate_path(path,length)) return BW_PFS_ARGUMENT;
     memcpy(p->path,path,length+1);p->smb=smb;p->transport_owner=owner;
-    struct smb2_stat_64 raw={0};
-    int result=smb2_stat(smb,path,&raw);bw_stat_from_smb2(&p->admitted,&raw);
+    int result=smb2_stat(smb,path,&p->admitted_raw);bw_stat_from_smb2(&p->admitted,&p->admitted_raw);
     if (result || p->admitted.type!=BW_TP_FILE || p->admitted.size<48 ||
         p->admitted.size>BW_PFS_MAX_VOLUME) {
         BW_IMAGE_FAILURE(p,result?"admit-stat":"admit-metadata",result,0,0,NULL,NULL);failure(p,result,result?BW_IMAGE_FAILURE_ADMIT_STAT:BW_IMAGE_FAILURE_ADMIT_METADATA,result!=0);return BW_PFS_IO;
