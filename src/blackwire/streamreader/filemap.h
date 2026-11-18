@@ -78,6 +78,12 @@ struct smb2fh *bw_files_remote_get(struct bw_files *files, struct smb2_context *
                                   uint32_t file_id, const char *game_prefix);
 void *bw_files_remote_get_ops(struct bw_files *files, const struct bw_files_remote_ops *ops,
                               void *context, uint32_t file_id, const char *game_prefix);
+/* Same contract over any transport. The map keeps tp as its context, so tp
+ * must stay at a stable address until the map is destroyed. A poisoned tp
+ * (NULL context) refuses every remote call. */
+struct bw_transport;
+void *bw_files_remote_get_transport(struct bw_files *files, struct bw_transport *tp,
+                                    uint32_t file_id, const char *game_prefix);
 const char *bw_files_error(const struct bw_files *files);
 
 #endif

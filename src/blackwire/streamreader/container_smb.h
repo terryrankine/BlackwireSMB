@@ -2,6 +2,7 @@
 #define BW_CONTAINER_SMB_H
 #include "container_source.h"
 #include "bw_stat.h"
+#include "bw_transport.h"
 #include <time.h>
 #include <smb2/smb2.h>
 #include <smb2/libsmb2.h>
@@ -22,13 +23,18 @@ enum bw_container_smb_failure_operation {
 };
 struct bw_container_smb {
     struct bw_container container;
+    /* Every I/O goes through ops on context. For SMB, context and smb are the
+     * same libsmb2 connection and smb stays the SMB owner's view of it. */
+    const struct bw_transport_ops *ops;
+    void *context;
     struct smb2_context *smb;
     struct smb2_context **transport_owner;
-    struct smb2fh *handle;
+    struct bw_transport *tp_owner;
+    void *handle;
     struct bw_stat admitted;
-    /* Admission stat destination. A sync smb2_stat that fails in its wait
-     * can still get a late reply written here, so it must outlive open. */
-    struct smb2_stat_64 admitted_raw;
+    /* Admission stat destination. A sync stat that fails in its wait can
+     * still get a late reply written here, so it must outlive open. */
+    struct bw_tp_stat_slot admitted_raw;
     char path[1024];
     uint64_t read_calls,read_bytes,generation_checks;
     int failed,last_transport_error;
@@ -55,5 +61,9 @@ int bw_container_smb_open_owned(struct bw_container_smb *,struct smb2_context **
  * Requests >=64 KiB use the unchanged direct path; DATA workers do not opt in.
  */
 int bw_container_smb_open_owned_metadata(struct bw_container_smb *,struct smb2_context **transport_owner,const char *);
+/* Any transport, same owned contract: a failure that poisons the connection
+ * destroys owner->context and sets it to NULL. metadata selects the opt-in
+ * metadata window as above. */
+int bw_container_open_transport(struct bw_container_smb *,struct bw_transport *owner,const char *,unsigned metadata);
 int bw_container_smb_close(struct bw_container_smb *);
 #endif

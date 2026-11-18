@@ -12,9 +12,9 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include "bw_transport.h"
 #ifndef BW_FILEMAP_HOST
-#include <smb2/smb2.h>
-#include <smb2/libsmb2.h>
+#include "bw_transport_smb.h"
 #endif
 
 struct bw_file_identity { uint64_t inode, size; uint32_t file_id; };
@@ -267,23 +267,47 @@ void *bw_files_remote_get_ops(struct bw_files *files, const struct bw_files_remo
     victim->handle = handle; victim->file_id = id; victim->age = next_age(files); files->handle_count++;
     return handle;
 }
+static void copy_remote_stat(struct bw_files_remote_stat *out, const struct bw_stat *st) {
+    out->regular = st->type == BW_TP_FILE;
+    out->size = st->size; out->mtime_sec = st->mtime; out->inode = st->ino;
+}
+static int tp_stat(void *context, const char *path, struct bw_files_remote_stat *out) {
+    const struct bw_transport *tp = context; struct bw_stat st;
+    if (!tp->context || tp->ops->stat(tp->context, path, &st, NULL)) return -1;
+    copy_remote_stat(out, &st); return 0;
+}
+static void *tp_open(void *context, const char *path) {
+    const struct bw_transport *tp = context;
+    return tp->context ? tp->ops->open(tp->context, path) : NULL;
+}
+static int tp_fstat(void *context, void *handle, struct bw_files_remote_stat *out) {
+    const struct bw_transport *tp = context; struct bw_stat st;
+    if (!tp->context || tp->ops->fstat(tp->context, handle, &st, NULL)) return -1;
+    copy_remote_stat(out, &st); return 0;
+}
+static int tp_close(void *context, void *handle) {
+    const struct bw_transport *tp = context;
+    return tp->context ? tp->ops->close(tp->context, handle) : -1;
+}
+void *bw_files_remote_get_transport(struct bw_files *files, struct bw_transport *tp,
+                                    uint32_t id, const char *prefix) {
+    static const struct bw_files_remote_ops ops = {tp_stat, tp_open, tp_fstat, tp_close};
+    if (!tp || !tp->ops) { failure(files, "Invalid remote stream request"); return NULL; }
+    return bw_files_remote_get_ops(files, &ops, tp, id, prefix);
+}
 #ifndef BW_FILEMAP_HOST
-static void copy_smb_stat(struct bw_files_remote_stat *out, const struct smb2_stat_64 *st) {
-    out->regular = st->smb2_type == SMB2_TYPE_FILE;
-    out->size = st->smb2_size; out->mtime_sec = st->smb2_mtime; out->inode = st->smb2_ino;
-}
 static int remote_stat(void *context, const char *path, struct bw_files_remote_stat *out) {
-    struct smb2_stat_64 st;
-    if (smb2_stat(context, path, &st)) return -1;
-    copy_smb_stat(out, &st); return 0;
+    struct bw_stat st;
+    if (bw_tp_smb_stat(context, path, &st, NULL)) return -1;
+    copy_remote_stat(out, &st); return 0;
 }
-static void *remote_open(void *context, const char *path) { return smb2_open(context, path, O_RDONLY); }
+static void *remote_open(void *context, const char *path) { return bw_tp_smb_open(context, path); }
 static int remote_fstat(void *context, void *handle, struct bw_files_remote_stat *out) {
-    struct smb2_stat_64 st;
-    if (smb2_fstat(context, handle, &st)) return -1;
-    copy_smb_stat(out, &st); return 0;
+    struct bw_stat st;
+    if (bw_tp_smb_fstat(context, handle, &st, NULL)) return -1;
+    copy_remote_stat(out, &st); return 0;
 }
-static int remote_close(void *context, void *handle) { return smb2_close(context, handle); }
+static int remote_close(void *context, void *handle) { return bw_tp_smb_close(context, handle); }
 struct smb2fh *bw_files_remote_get(struct bw_files *files, struct smb2_context *smb,
                                   uint32_t id, const char *prefix) {
     static const struct bw_files_remote_ops ops = {remote_stat, remote_open, remote_fstat, remote_close};

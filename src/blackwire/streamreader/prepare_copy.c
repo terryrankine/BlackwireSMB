@@ -19,7 +19,7 @@
 #include <sys/socket.h>
 #include <smb2/smb2.h>
 #include <smb2/libsmb2.h>
-#include "bw_stat_smb2.h"
+#include "bw_transport_smb.h"
 #endif
 #ifndef BW_COPY_DATA
 #define BW_COPY_DATA "/data/blackwire"
@@ -469,16 +469,16 @@ static void cp_remote_observe(struct cp_remote_observation *out,const struct bw_
   out->type=st->type;out->size=st->size;out->inode=st->ino;
   out->mtime=st->mtime;out->mtime_nsec=st->mtime_nsec;out->ctime=st->ctime;out->ctime_nsec=st->ctime_nsec;
 }
-static int cp_smb_current(struct smb2_context *smb,struct smb2fh *fh,const char *path,const struct bw_stat *before) {
-  struct smb2_stat_64 raw;struct bw_stat opened,named;errno=0;int rc=smb2_fstat(smb,fh,&raw);
-  if(rc){cp_failure("sourceGeneration.opened-stat",rc,errno);return 0;}bw_stat_from_smb2(&opened,&raw);cp_remote_observe(&cp_diagnostic.opened,&opened);cp_diagnostic.remote_flags|=2;
-  errno=0;rc=smb2_stat(smb,path,&raw);if(rc){cp_failure("sourceGeneration.named-stat",rc,errno);return 0;}
-  bw_stat_from_smb2(&named,&raw);cp_remote_observe(&cp_diagnostic.named,&named);cp_diagnostic.remote_flags|=4;
+static int cp_source_current(const struct bw_transport *tp,void *fh,const char *path,const struct bw_stat *before) {
+  struct bw_stat opened,named;errno=0;int rc=tp->ops->fstat(tp->context,fh,&opened,NULL);
+  if(rc){cp_failure("sourceGeneration.opened-stat",rc,errno);return 0;}cp_remote_observe(&cp_diagnostic.opened,&opened);cp_diagnostic.remote_flags|=2;
+  errno=0;rc=tp->ops->stat(tp->context,path,&named,NULL);if(rc){cp_failure("sourceGeneration.named-stat",rc,errno);return 0;}
+  cp_remote_observe(&cp_diagnostic.named,&named);cp_diagnostic.remote_flags|=4;
   if(!bw_stat_same_file(before,&opened)){cp_failure("sourceGeneration.opened-changed",0,0);return 0;}
   if(!bw_stat_same_file(before,&named)){cp_failure("sourceGeneration.named-changed",0,0);return 0;}
   return 1;
 }
-static int cp_source_file(struct cp_plan *p,struct smb2_context *smb,int root,uint32_t i) {
+static int cp_source_file(struct cp_plan *p,const struct bw_transport *tp,int root,uint32_t i) {
   struct bw_manifest_record r;char leaf[256],parent_rel[1024],source[1536],temp[128];
   cp_diagnostic_reset();cp_diagnostic.file_id=i;errno=0;int rc=bw_manifest_get(&p->manifest,i,&r);
   if(rc||r.flags!=BW_MANIFEST_LOCAL)return cp_failure("selection.record",rc,errno);
@@ -494,12 +494,12 @@ static int cp_source_file(struct cp_plan *p,struct smb2_context *smb,int root,ui
     close(parent);return exists;
   }
   int n=snprintf(source,sizeof source,"%s/%s",p->cfg.game,r.path);if(n<0||(size_t)n>=sizeof source){close(parent);return cp_failure("source.path",n,0);}
-  struct smb2_stat_64 raw;struct bw_stat before;struct smb2fh *fh=NULL;int fd=-1,bad=1,known_temp=0;struct stat created;
-  errno=0;rc=smb2_stat(smb,source,&raw);if(rc){cp_failure("source.named-stat",rc,errno);goto done;}
-  bw_stat_from_smb2(&before,&raw);cp_remote_observe(&cp_diagnostic.before,&before);cp_diagnostic.remote_flags=1;
+  struct bw_stat before;void *fh=NULL;int fd=-1,bad=1,known_temp=0;struct stat created;
+  errno=0;rc=tp->ops->stat(tp->context,source,&before,NULL);if(rc){cp_failure("source.named-stat",rc,errno);goto done;}
+  cp_remote_observe(&cp_diagnostic.before,&before);cp_diagnostic.remote_flags=1;
   if(before.type!=BW_TP_FILE||before.size!=r.size||before.mtime!=r.mtime_sec){cp_failure("source.named-metadata",0,0);goto done;}
-  errno=0;fh=smb2_open(smb,source,O_RDONLY);if(!fh){cp_failure("source.readonly-open",0,errno);goto done;}
-  if(!cp_smb_current(smb,fh,source,&before))goto done;
+  errno=0;fh=tp->ops->open(tp->context,source);if(!fh){cp_failure("source.readonly-open",0,errno);goto done;}
+  if(!cp_source_current(tp,fh,source,&before))goto done;
   n=snprintf(temp,sizeof temp,".blackwire-copy-%s-%u.tmp",p->cfg.run_id,i);if(n<0||(size_t)n>=sizeof temp){cp_failure("destination.temporary-name",n,0);goto done;}
   errno=0;if(!v2_directory_current(&p->cfg,root,parent,parent_rel)){cp_failure("destination.parent-current",0,errno);goto done;}
   mode_t mode=(mode_t)bw_startup_mode(r.path);
@@ -511,7 +511,7 @@ static int cp_source_file(struct cp_plan *p,struct smb2_context *smb,int root,ui
     cp_diagnostic.offset=at;cp_diagnostic.requested=want;
     if(!cp_alive(p)){cp_failure("source.deadline",0,0);goto done;}
     errno=0;if(!v2_directory_current(&p->cfg,root,parent,parent_rel)){cp_failure("destination.copy-parent",0,errno);goto done;}
-    errno=0;int got=smb2_pread(smb,fh,buffer,want,at);if(got<=0||(uint32_t)got>want){cp_failure("source.read",got,errno);goto done;}
+    errno=0;int got=tp->ops->pread(tp->context,fh,buffer,want,at);if(got<=0||(uint32_t)got>want){cp_failure("source.read",got,errno);goto done;}
     errno=0;rc=cp_write_all(fd,buffer,(size_t)got);if(rc){cp_failure("destination.write",rc,errno);goto done;}
     cp_sha_update(&sha,buffer,(size_t)got);at+=(uint64_t)got;p->copied_bytes+=(uint64_t)got;
   }
@@ -525,13 +525,13 @@ static int cp_source_file(struct cp_plan *p,struct smb2_context *smb,int root,ui
   errno=0;rc=cp_file_hash(fd,r.size,hash);if(rc){cp_failure("readback.read",rc,errno);goto done;}
   memcpy(cp_diagnostic.readback_sha,hash,32);cp_diagnostic.hash_flags|=4;
   if(memcmp(hash,expected,32)){cp_failure("readbackSHA.mismatch",0,0);goto done;}
-  if(!cp_smb_current(smb,fh,source,&before))goto done;
+  if(!cp_source_current(tp,fh,source,&before))goto done;
   errno=0;rc=cp_refresh(p);if(rc){cp_failure("sourceGeneration.lease",rc,errno);goto done;}
   if(cp_publish(&p->cfg,root,parent,parent_rel,temp,leaf,fd,r.size,mode,expected,p->deadline))goto done;
   bad=0;
 done:
   if(bad&&known_temp)cp_diagnostic.cleanup_result=cp_cleanup_temp(&p->cfg,root,parent,parent_rel,temp,fd,&created);
-  if(fd>=0)close(fd);if(fh){errno=0;rc=smb2_close(smb,fh);if(rc){cp_failure("source.close",rc,errno);bad=1;}}close(parent);
+  if(fd>=0)close(fd);if(fh){errno=0;rc=tp->ops->close(tp->context,fh);if(rc){cp_failure("source.close",rc,errno);bad=1;}}close(parent);
   return bad?v2_fail("Startup copy failed source, digest, identity, or no-replace checks; existing files were preserved"):0;
 }
 #endif
@@ -641,10 +641,11 @@ int main(void) {
     char share[128],user[128],password[128];if(cp_share_field(share,sizeof share,"share",1)||cp_share_field(user,sizeof user,"user",1)||cp_share_field(password,sizeof password,"password",0))goto done;
     smb=smb2_init_context();if(!smb){memset(password,0,sizeof password);goto done;}smb2_set_timeout(smb,10);smb2_set_user(smb,user);smb2_set_password(smb,password);smb2_set_sign(smb,1);smb2_set_security_mode(smb,SMB2_NEGOTIATE_SIGNING_ENABLED|SMB2_NEGOTIATE_SIGNING_REQUIRED);
     int connected=smb2_connect_share(smb,p.server,share,user);memset(password,0,sizeof password);if(connected<0)goto done;
+    const struct bw_transport source_tp={&bw_transport_smb_ops,smb};
     double progress_at=cp_now();
     for(uint32_t i=0;i<p.manifest.count;i++){
       struct bw_manifest_record r;if(bw_manifest_get(&p.manifest,i,&r))goto done;
-      if(r.flags==BW_MANIFEST_LOCAL){if(cp_source_file(&p,smb,root,i))goto done;p.verified_count++;}
+      if(r.flags==BW_MANIFEST_LOCAL){if(cp_source_file(&p,&source_tp,root,i))goto done;p.verified_count++;}
       double now=cp_now();if(now<0)goto done;if(now-progress_at>=1){if(cp_status(&p,datafd,"preparing","Verifying existing and missing LOCAL files; sources are read only"))goto done;progress_at=now;}
     }
     if(cp_generation(&p)||!v2_root_current(&data_cfg,datafd)||cp_blob(&p.cfg,root,"blackwire.files",p.map,p.map_size,p.cfg.run_id,p.deadline)||
