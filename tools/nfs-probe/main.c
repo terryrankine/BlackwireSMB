@@ -71,6 +71,11 @@
 static int g_out = -1;
 static int g_failed;
 static unsigned g_region;
+/* stdout is only a convenience copy: the payload loader may close it or never
+ * read it. Losing it is reported but is not a probe failure. */
+static int g_stdout_ok = 1;
+static int g_stdout_errno;
+static unsigned g_stdout_lost;
 
 /* One line to stdout and the report file. Lines are short; a longer one is
  * cut and marked so it is never mistaken for the whole value. */
@@ -88,7 +93,8 @@ static void emit(const char *fmt, ...) {
         memcpy(line + len, cut, sizeof cut);
         len += sizeof cut - 1;
     }
-    int fds[2] = {1, g_out};
+    if (!g_stdout_ok) g_stdout_lost++;
+    int fds[2] = {g_stdout_ok ? 1 : -1, g_out};
     for (int i = 0; i < 2; i++) {
         if (fds[i] < 0) continue;
         const char *p = line;
@@ -97,9 +103,16 @@ static void emit(const char *fmt, ...) {
             ssize_t w = write(fds[i], p, left);
             if (w < 0 && errno == EINTR) continue;
             if (w <= 0) {
+                if (fds[i] == 1) {
+                    /* Stop writing to stdout. The file copy carries on. */
+                    g_stdout_ok = 0;
+                    g_stdout_errno = w < 0 ? errno : 0;
+                    g_stdout_lost++;
+                    break;
+                }
                 /* Losing the file copy is a failure, but keep printing to stdout. */
                 g_failed = 1;
-                if (fds[i] == g_out) { close(g_out); g_out = -1; }
+                close(g_out); g_out = -1;
                 break;
             }
             p += w; left -= (size_t)w;
@@ -537,6 +550,9 @@ int main(void) {
     run_version(PROBE_NFS_V3);
     run_version(PROBE_NFS_V4);
 
+    if (!g_stdout_ok)
+        emit("\nwarning: stdout write failed (%s); %u earlier line(s) missing from stdout, all in %s\n",
+             g_stdout_errno ? strerror(g_stdout_errno) : "wrote 0 bytes", g_stdout_lost, OUT_PATH);
     emit("\nresult: %s\n", g_failed ? "FAIL" : "PASS");
     if (g_out >= 0 && close(g_out) != 0) {
         fprintf(stderr, "nfs-probe: close %s: %s\n", OUT_PATH, strerror(errno));
