@@ -255,6 +255,8 @@ def host_tests(root, out, source, runner):
                         ("registration_wait", "diagnostics/check_registration_wait.py"),
                         ("two_shares", "sources/check_two_shares.py"),
                         ("identity_golden", "sources/check_identity_golden.py"),
+                        ("share_config", "sources/check_share_config.py"),
+                        ("nfs_binding", "sources/check_nfs_binding.py"),
                         ("transport", "transport/check_transport.py")):
         checked = out / key
         runner.run(["python3", root / "tests" / script, "--output", checked], "host-" + key)
