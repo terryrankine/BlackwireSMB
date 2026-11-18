@@ -6,8 +6,8 @@ Changes are grouped by published preview. A build pass, initial menu and control
 
 - Refuse requests on port 5918 whose Host is not `127.0.0.1`, `localhost` or a literal loopback (`127.0.0.0/8`), private (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) or link-local (`169.254.0.0/16`) IPv4 address, optionally with `:5918`. This blocks DNS-rebinding pages. Requests without Host are refused on every HTTP version. Open the LAN page by the PS5's IPv4 address. A hostname, including one from the router, is answered with 421.
 - Refuse a POST whose Origin is present but is not `http://` plus the request Host. Native clients that send no Origin, including the home-screen reader bootstrap, are unchanged.
-- Give each request read one 5-second total budget, on top of the existing per-call socket timeouts. A slowly dripping client can no longer hold the single-threaded listener. A response write stops after 5 seconds without progress, so a slow link still receives a large cover. A failed or stalled response write is logged.
-- Send `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'` and `Referrer-Policy: no-referrer` with every response. No script policy is set, because the page uses inline script and style.
+- Give each request read one 5-second total budget, on top of the existing per-call socket timeouts. A slowly dripping client can no longer hold the single-threaded listener. A native resident response write stops after 5 seconds without progress, so a slow link still receives a large cover. A failed or stalled response write is logged.
+- Send `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'` and `Referrer-Policy: no-referrer` with every response the native resident builds. No script policy is set, because the page uses inline script and style.
 - Require the resident action token on `POST /api/refresh`, as the other actions already do. The page already sends it.
 
 Focused host checks passed with GCC 13 under ASan/UBSan, not the documented clang-18. The 92 UI tests passed. No SDK build or console test has been run. Source-manifest pins for the changed files are not yet updated.
