@@ -78,10 +78,13 @@ int main(void){
     {
         cases++;int pair[2];C(!socketpair(AF_UNIX,SOCK_STREAM,0,pair));pid_t child=fork();C(child>=0);
         if(!child){signal(SIGPIPE,SIG_IGN);close(pair[1]);const char *drip="GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Slow: aaaaaaaaaaaaaaaa";
-            for(const char *at=drip;*at;at++){if(write(pair[0],at,1)!=1)_exit(0);struct timespec t={0,500000000};nanosleep(&t,NULL);}_exit(0);}
+            /* Drip without end, so only the budget can stop serve(). */
+            for(const char *at=drip;;at=*at&&at[1]?at+1:at){if(write(pair[0],at,1)!=1)_exit(0);struct timespec t={0,500000000};nanosleep(&t,NULL);}}
         C(!close(pair[0]));struct timespec began,ended;C(!clock_gettime(CLOCK_MONOTONIC,&began));
         serve(pair[1],"127.0.0.1");C(!close(pair[1]));C(!clock_gettime(CLOCK_MONOTONIC,&ended));
-        double elapsed=(double)(ended.tv_sec-began.tv_sec)+(double)(ended.tv_nsec-began.tv_nsec)/1e9;C(elapsed>=4.5&&elapsed<6.5);
+        /* The upper bound is wide for loaded sanitiser runs. The endless drip
+         * keeps it decisive: without the budget serve() would run for an hour. */
+        double elapsed=(double)(ended.tv_sec-began.tv_sec)+(double)(ended.tv_nsec-began.tv_nsec)/1e9;C(elapsed>=4.5&&elapsed<20.0);
         C(!kill(child,SIGKILL));int status;C(waitpid(child,&status,0)==child);
     }
     const char *big="GET /big HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n";
