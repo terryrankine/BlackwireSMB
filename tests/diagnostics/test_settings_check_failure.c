@@ -24,16 +24,16 @@ int smb2_connect_share(struct smb2_context *s,const char *server,const char *sha
 }
 int smb2_get_nterror(struct smb2_context *s){C(s);return (int)nt_status;}
 #ifndef BW_SETTINGS_ACTUAL_CATALOG
-int bw_source_catalog_scan(struct bw_source_smb *s,struct bw_source_catalog *out){
+int bw_source_catalog_scan(struct bw_source *s,struct bw_source_catalog *out){
     C(s&&s->smb);out->collections=1;s->requests=3;s->entries=1;
     if(mode==TIMEOUT_CATALOG||mode==CHANGED_CATALOG){out->error="catalog_image_generation_or_io_failed";s->error=mode==TIMEOUT_CATALOG?"source_scan_expired":"catalog_source_parent_changed";return -1;}
     if(mode==ARTWORK){out->count=out->capacity=1;out->items=calloc(1,sizeof *out->items);C(out->items);out->items[0].state=BW_CATALOG_CONTAINER_READY;}
     if(mode==INVALID_CATALOG)out->error="catalog_validation_failed";return 0;
 }
-int bw_source_catalog_container_cover(struct bw_source_smb *s,const struct bw_catalog_item *i,size_t max,void **bytes,size_t *size){
+int bw_source_catalog_container_cover(struct bw_source *s,const struct bw_catalog_item *i,size_t max,void **bytes,size_t *size){
     (void)i;(void)max;(void)bytes;(void)size;C(mode==ARTWORK);s->error="catalog_image_cover_generation_or_io_failed";return -1;
 }
-int bw_source_smb_small_file(struct bw_source_smb *s,const char *path,size_t maximum,void **bytes,size_t *size,struct bw_source_info *info){
+int bw_source_smb_small_file(struct bw_source *s,const char *path,size_t maximum,void **bytes,size_t *size,struct bw_source_info *info){
     (void)s;(void)path;(void)maximum;(void)bytes;(void)size;(void)info;abort();
 }
 void bw_source_catalog_destroy(struct bw_source_catalog *p){free(p->items);memset(p,0,sizeof *p);}
@@ -44,7 +44,7 @@ int bw_source_catalog_binding(struct bw_provider_binding *out,const struct bw_sh
 /* Complete production catalog -> discovery -> setup worker failure chain.
  * The first share is empty; the second lists one immutable neutral image. */
 static unsigned image_closes;
-int bw_source_smb_list(struct bw_source_smb *s,const char *path,bw_source_visit_fn visit,void *opaque){
+int bw_source_smb_list(struct bw_source *s,const char *path,bw_source_visit_fn visit,void *opaque){
  C(s&&s->smb&&!path[0]);if(!strcmp(active_share,"Compressed"))return 0;
  C(!strcmp(active_share,"PS5Games"));s->requests++;s->entries++;
  struct bw_source_info info={.size=4096,.inode=123,
@@ -71,8 +71,8 @@ uint32_t smb2_get_max_read_size(struct smb2_context *s){C(s&&mode==READ_EOF_CLOS
  * The fixture's declared image is 4096 bytes; request size is not the error
  * provenance contract this case verifies. */
 int smb2_pread(struct smb2_context *s,struct smb2fh *h,uint8_t *b,uint32_t n,uint64_t at){C(s&&h==(struct smb2fh *)&image_closes&&b&&n>=48&&n<=4096&&!at&&mode==READ_EOF_CLOSE_DENIED);return 0;}
-int bw_source_smb_file_info(struct bw_source_smb *s,const char *path,struct bw_source_info *out){(void)s;(void)path;(void)out;abort();}
-int bw_source_smb_small_file(struct bw_source_smb *s,const char *path,size_t max,void **bytes,size_t *size,struct bw_source_info *info){(void)s;(void)path;(void)max;(void)bytes;(void)size;(void)info;abort();}
+int bw_source_smb_file_info(struct bw_source *s,const char *path,struct bw_source_info *out){(void)s;(void)path;(void)out;abort();}
+int bw_source_smb_small_file(struct bw_source *s,const char *path,size_t max,void **bytes,size_t *size,struct bw_source_info *info){(void)s;(void)path;(void)max;(void)bytes;(void)size;(void)info;abort();}
 #endif
 int bw_native_setup_generation_equal(const struct bw_setup_generation *a,const struct bw_setup_generation *b){return !memcmp(a,b,sizeof *a);}
 static int removal_cache(struct bw_native_backend *p,struct bw_native_library *l,const struct bw_share_config *c){(void)p;(void)l;(void)c;return late_failure?-1:0;}

@@ -34,21 +34,21 @@ struct smb2fh *smb2_open(struct smb2_context *c,const char *path,int mode){C(c&&
 int smb2_close(struct smb2_context *c,struct smb2fh *h){C(c&&c->handle==h);int result=close(h->fd);free(h);c->handle=NULL;return result;}
 uint32_t smb2_get_max_read_size(struct smb2_context *c){C(c);return 65536;}
 int smb2_pread(struct smb2_context *c,struct smb2fh *h,uint8_t *bytes,uint32_t size,uint64_t at){reads++;C(c&&c->handle==h&&size<=65536);ssize_t n=pread(h->fd,bytes,size,(off_t)at);return n<0?-errno:(int)n;}
-int bw_source_smb_list(struct bw_source_smb *s,const char *path,bw_source_visit_fn visit,void *opaque){
+int bw_source_smb_list(struct bw_source *s,const char *path,bw_source_visit_fn visit,void *opaque){
  C(s&&s->smb&&!path[0]);for(int i=0;i<count;i++){struct stat st;C(!stat(inputs[i],&st));
  struct bw_source_info info={.size=st.st_size,.inode=st.st_ino,
   .mtime_ticks=UINT64_C(116444736000000000)+(uint64_t)st.st_mtim.tv_sec*10000000u+st.st_mtim.tv_nsec/100,
   .ctime_ticks=UINT64_C(116444736000000000)+(uint64_t)st.st_ctim.tv_sec*10000000u+st.st_ctim.tv_nsec/100};
  if(visit(opaque,name(i),&info))return -1;}return 0;
 }
-int bw_source_smb_file_info(struct bw_source_smb *s,const char *p,struct bw_source_info *i){(void)s;(void)p;(void)i;C(0);return -1;}
-int bw_source_smb_small_file(struct bw_source_smb *s,const char *p,size_t n,void **b,size_t *z,struct bw_source_info *i){(void)s;(void)p;(void)n;(void)b;(void)z;(void)i;C(0);return -1;}
-void bw_source_smb_progress(struct bw_source_smb *p,enum bw_source_phase phase,uint32_t files,uint32_t total,uint64_t bytes,uint64_t byte_total){
+int bw_source_smb_file_info(struct bw_source *s,const char *p,struct bw_source_info *i){(void)s;(void)p;(void)i;C(0);return -1;}
+int bw_source_smb_small_file(struct bw_source *s,const char *p,size_t n,void **b,size_t *z,struct bw_source_info *i){(void)s;(void)p;(void)n;(void)b;(void)z;(void)i;C(0);return -1;}
+void bw_source_smb_progress(struct bw_source *p,enum bw_source_phase phase,uint32_t files,uint32_t total,uint64_t bytes,uint64_t byte_total){
  p->progress.phase=phase;p->progress.files_done=files;p->progress.files_total=total;p->progress.bytes_done=bytes;p->progress.bytes_total=byte_total;
 }
-static int operation_current(void *opaque){struct bw_source_smb *s=opaque;struct timespec t;return !s->smb||clock_gettime(CLOCK_MONOTONIC,&t)||t.tv_sec+t.tv_nsec/1e9>=s->deadline;}
+static int operation_current(void *opaque){struct bw_source *s=opaque;struct timespec t;return !s->smb||clock_gettime(CLOCK_MONOTONIC,&t)||t.tv_sec+t.tv_nsec/1e9>=s->deadline;}
 static int consume(void *opaque,const void *bytes,size_t size){uint64_t *total=opaque;C(bytes&&size&&size<=BW_COMPRESSED_DATA_CHUNK);*total+=size;return 0;}
-static void prepare_copy(struct bw_source_smb *s,const struct bw_catalog_item *item){
+static void prepare_copy(struct bw_source *s,const struct bw_catalog_item *item){
  C(item->state==BW_CATALOG_CONTAINER_READY);
  struct bw_container_smb *image=calloc(1,sizeof *image);C(image);C(!bw_container_smb_open_owned(image,&s->smb,item->source));
  struct bw_source_binding binding={0};strcpy(binding.source,item->source);strcpy(binding.title,item->title_id);strcpy(binding.game,"PPSA09999_fixture");
@@ -64,7 +64,7 @@ int main(int argc,char **argv){
  C(!strcmp(bw_source_catalog_error_name(NULL),"not_applicable"));C(!strcmp(bw_source_catalog_stage_name(NULL),"unknown"));
  C(argc>=2);int prepare=!strcmp(argv[1],"--prepare");inputs=argv+1+prepare;count=argc-1-prepare;C(count>0);
  struct timespec now;C(!clock_gettime(CLOCK_MONOTONIC,&now));
- struct bw_source_smb s={.deadline=now.tv_sec+now.tv_nsec/1e9+120};s.smb=calloc(1,sizeof *s.smb);C(s.smb);
+ struct bw_source s={.deadline=now.tv_sec+now.tv_nsec/1e9+120};s.smb=calloc(1,sizeof *s.smb);C(s.smb);
  struct bw_source_catalog catalog={0};int result=bw_source_catalog_scan(&s,&catalog);
  if(prepare){C(!result&&catalog.count==1);prepare_copy(&s,catalog.items);}
  char *json=NULL;size_t length=0;C(!bw_source_catalog_json(&catalog,&json,&length));

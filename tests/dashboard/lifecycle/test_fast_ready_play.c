@@ -52,20 +52,20 @@ int bw_source_provider_read(struct bw_source_provider *p,const char *name,bw_sou
     CHECK(p&&consume&&!bw_source_provider_current(p));char full[2048];path(full,source_root,name);size_t size;void *body=file_read(full,&size);
     int result=consume(o,body,size);free(body);return result;
 }
-void bw_source_smb_progress(struct bw_source_smb *p,enum bw_source_phase phase,uint32_t a,uint32_t b,uint64_t c,uint64_t d){
+void bw_source_smb_progress(struct bw_source *p,enum bw_source_phase phase,uint32_t a,uint32_t b,uint64_t c,uint64_t d){
     CHECK(p&&a<=b&&c<=d);p->progress=(struct bw_source_progress){.phase=phase,.files_done=a,.files_total=b,.bytes_done=c,.bytes_total=d};
 }
 static int remote_path(const char *name,char full[2048]){
     const char prefix[]="Fixture/";if(strncmp(name,prefix,sizeof prefix-1))return -1;path(full,source_root,name+sizeof prefix-1);return 0;
 }
-int bw_source_smb_file_info(struct bw_source_smb *p,const char *name,struct bw_source_info *out){
+int bw_source_smb_file_info(struct bw_source *p,const char *name,struct bw_source_info *out){
     CHECK(p&&p->smb&&name&&out);remote_lookups++;char full[2048];struct stat s;
     if(remote_path(name,full)||lstat(full,&s)||!S_ISREG(s.st_mode))return BW_SOURCE_MISSING;
     *out=(struct bw_source_info){.size=(uint64_t)s.st_size,.inode=(uint64_t)s.st_ino,
         .mtime_ticks=UINT64_C(116444736000000000)+(uint64_t)s.st_mtime*10000000u,.ctime_ticks=0,.attributes=0};
     return BW_SOURCE_FOUND;
 }
-int bw_source_smb_small_file(struct bw_source_smb *p,const char *name,size_t maximum,void **bytes,size_t *size,struct bw_source_info *info){
+int bw_source_smb_small_file(struct bw_source *p,const char *name,size_t maximum,void **bytes,size_t *size,struct bw_source_info *info){
     int result=bw_source_smb_file_info(p,name,info);if(result)return result;if(info->size>maximum)return BW_SOURCE_TOO_LARGE;
     char full[2048];CHECK(!remote_path(name,full));*bytes=file_read(full,size);remote_reads++;return 0;
 }
@@ -85,7 +85,7 @@ int main(int argc,char **argv){
     path(data,argv[1],"data");path(source_root,argv[1],"source");path(fixture,argv[1],"metadata");path(log,argv[1],"game.log");path(apps,argv[1],"apps");path(database,argv[1],"app.db");
     struct bw_share_config config={0};strcpy(config.server,"192.0.2.1");strcpy(config.share,"FixtureShare");
     struct bw_provider_binding identity;CHECK(!bw_provider_binding_init(&identity,&config,"Fixture","PPSA99999",BW_PROVIDER_FOLDER));
-    struct bw_source_provider provider={0};struct bw_source_smb source={.smb=(struct smb2_context *)(uintptr_t)1,.deadline=cp_now()+60};
+    struct bw_source_provider provider={0};struct bw_source source={.smb=(struct smb2_context *)(uintptr_t)1,.deadline=cp_now()+60};
     provider.identity=identity;provider.source=&source;provider.bundle.ready=1;strcpy(provider.bundle.source,"Fixture");strcpy(provider.bundle.game,identity.binding.game);strcpy(provider.bundle.title,"PPSA99999");
     size_t size;path(name,fixture,"map.bin");provider.bundle.map.bytes=file_read(name,&provider.bundle.map.size);
     path(name,fixture,"digests.bin");provider.bundle.digests=file_read(name,&provider.bundle.digest_size);

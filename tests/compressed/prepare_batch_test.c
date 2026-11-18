@@ -12,13 +12,13 @@ static unsigned checks,allocation_fail;
 #define CHECK(x) do{checks++;if(!(x)){fprintf(stderr,"compressed prepare line %d: %s\n",__LINE__,#x);exit(1);}}while(0)
 void *__real_malloc(size_t);
 void *__wrap_malloc(size_t size){if(allocation_fail&&size==BW_COMPRESSED_DATA_READ_CHUNK){allocation_fail=0;return NULL;}return __real_malloc(size);}
-struct fixture {uint8_t *image;size_t size;unsigned fences,reads;int canceled,changed,fail_read;struct bw_source_smb progress;};
+struct fixture {uint8_t *image;size_t size;unsigned fences,reads;int canceled,changed,fail_read;struct bw_source progress;};
 struct sink {struct fixture *fixture;const uint8_t *original;size_t size,used,largest;unsigned calls,action;};
 static uint8_t *load(const char *path,size_t *size){FILE *f=fopen(path,"rb");CHECK(f);CHECK(!fseek(f,0,SEEK_END));long n=ftell(f);CHECK(n>0);*size=(size_t)n;CHECK(!fseek(f,0,SEEK_SET));uint8_t *bytes=malloc(*size);CHECK(bytes);CHECK(fread(bytes,1,*size,f)==*size);CHECK(!fclose(f));return bytes;}
 static int image_read(void *opaque,uint64_t at,void *out,size_t size){struct fixture *p=opaque;p->reads++;if(p->fail_read){p->fail_read=0;return -1;}if(at>p->size||size>p->size-at)return -1;memcpy(out,p->image+at,size);return 0;}
 static int generation(void *opaque){struct fixture *p=opaque;p->fences++;return p->changed?-1:0;}
 static int current(void *opaque){return ((struct fixture *)opaque)->canceled;}
-void bw_source_smb_progress(struct bw_source_smb *p,enum bw_source_phase phase,uint32_t files,uint32_t total,uint64_t bytes,uint64_t byte_total){p->progress.phase=phase;p->progress.files_done=files;p->progress.files_total=total;p->progress.bytes_done=bytes;p->progress.bytes_total=byte_total;}
+void bw_source_smb_progress(struct bw_source *p,enum bw_source_phase phase,uint32_t files,uint32_t total,uint64_t bytes,uint64_t byte_total){p->progress.phase=phase;p->progress.files_done=files;p->progress.files_total=total;p->progress.bytes_done=bytes;p->progress.bytes_total=byte_total;}
 static int consume(void *opaque,const void *bytes,size_t size){
     struct sink *p=opaque;CHECK(size&&size<=BW_COMPRESSED_DATA_CHUNK&&size<=p->size-p->used);CHECK(!memcmp(bytes,p->original+p->used,size));
     p->calls++;p->used+=size;if(size>p->largest)p->largest=size;

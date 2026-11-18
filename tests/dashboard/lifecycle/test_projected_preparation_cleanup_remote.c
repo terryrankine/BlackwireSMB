@@ -100,7 +100,7 @@ static int owner_advisory_sources(void *opaque,const struct bw_nrc_subject *subj
 static int owner_advisory_uninstall(void *opaque,const char title[10]){(void)opaque;(void)title;C(0);return -1;}
 /* The ownership record is created by the real NRC producer. Only normal
  * registration's external app/SQLite effects and manual membership are models. */
-static int owner_advisory_case(struct smb2_context *context,struct bw_source_smb *source,
+static int owner_advisory_case(struct smb2_context *context,struct bw_source *source,
     const struct bw_share_config *original,const char *data,const char *apps,const char *db,
     const char *save,const char *log,const struct bw_provider_binding *selected,
     const struct bw_native_prepared *prepared,const struct bw_preload_reader_pin *pin){
@@ -142,7 +142,7 @@ static int owner_advisory_case(struct smb2_context *context,struct bw_source_smb
 
 int main(int argc,char **argv){C(argc==6||argc==7);int folder=!strcmp(argv[1],"folder");remote.mode=argv[5];
     struct smb2_context context={0};C(strlen(argv[2])<sizeof context.root);strcpy(context.root,argv[2]);for(unsigned i=0;i<64;i++)context.handles[i].fd=-1;remote.context=&context;
-    struct bw_source_smb source={.smb=&context,.deadline=now()+600};struct bw_share_config config={0};strcpy(config.server,"192.0.2.1");strcpy(config.share,"FixtureShare");
+    struct bw_source source={.smb=&context,.deadline=now()+600};struct bw_share_config config={0};strcpy(config.server,"192.0.2.1");strcpy(config.share,"FixtureShare");
     struct bw_provider_binding binding;C(!bw_provider_binding_init(&binding,&config,folder?"fixture":"fixture.ffpfsc",scenario("ordinary-unrelated")?"PPSA99002":"PPSA99001",folder?BW_PROVIDER_FOLDER:BW_PROVIDER_CONTAINER));
     struct bw_container_smb *image=NULL;struct image_source input={.context=&context};if(!folder){load_image(&input,argv[3]);image=calloc(1,sizeof *image);C(image);strcpy(image->path,"fixture.ffpfsc");image->handle=(struct smb2fh *)image;image->admitted.ino=7;image->admitted.size=input.size;image->admitted.mtime=1700000000;struct bw_container_ops ops={image_read,image_generation};C(!bw_container_open(&image->container,&ops,&input,input.size));}
     char data[1600],apps[1600],db[1600],save[1600],log[1600],state[1800],path[2200],app[1800]={0},param[2000]={0};

@@ -56,7 +56,7 @@ struct bw_pbb_stats {
 typedef int (*bw_pbb_fence_fn)(void *);
 struct bw_pbb_request {
     uint32_t version;uint64_t epoch; /* exactly 2, nonzero real caller epoch */
-    struct bw_source_smb *source;const struct bw_source_snapshot *snapshot;
+    struct bw_source *source;const struct bw_source_snapshot *snapshot;
     bw_source_range_current_fn current;void *job; /* pure, nonreentrant */
     bw_pbb_fence_fn fence;void *fence_opaque;
     uint32_t source_kind,source_policy;const char *profile; /* FOLDER/1/none */

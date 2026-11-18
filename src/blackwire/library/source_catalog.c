@@ -42,7 +42,7 @@ void bw_source_catalog_image_hash(const struct bw_stat *p,uint8_t out[32]){
 }
 /* Existing callers use this as a boolean; -2 additionally preserves a proven
  * deadline expiry instead of labelling it a changed image generation. */
-static int live(const struct bw_source_smb *p){struct timespec at;if(!p->smb||clock_gettime(CLOCK_MONOTONIC,&at))return -1;return ((double)at.tv_sec+(double)at.tv_nsec/1e9)>=p->deadline?-2:0;}
+static int live(const struct bw_source *p){struct timespec at;if(!p->smb||clock_gettime(CLOCK_MONOTONIC,&at))return -1;return ((double)at.tv_sec+(double)at.tv_nsec/1e9)>=p->deadline?-2:0;}
 static int listed_time(uint64_t ticks,uint64_t seconds,uint64_t nsec){
     const uint64_t epoch=UINT64_C(116444736000000000);
     return ticks>=epoch&&(ticks-epoch)/10000000==seconds&&((ticks-epoch)%10000000)/10==nsec/1000;
@@ -64,8 +64,8 @@ static int image_access_refused(const struct bw_container_smb *image){
         (image->first_failure_result==-EACCES||image->first_failure_result==-EPERM);
 }
 struct candidate {char source[1024],name[241];struct bw_source_info info;unsigned depth;};
-struct scan {struct bw_source_smb *source;struct bw_source_catalog *catalog;struct candidate *pending;size_t count,capacity;const char *relative;unsigned depth;};
-struct logical_metadata {struct bw_source_smb *source;struct bw_pfs_inode boot,param,icon;size_t path_bytes;uint32_t files;int error,expired;};
+struct scan {struct bw_source *source;struct bw_source_catalog *catalog;struct candidate *pending;size_t count,capacity;const char *relative;unsigned depth;};
+struct logical_metadata {struct bw_source *source;struct bw_pfs_inode boot,param,icon;size_t path_bytes;uint32_t files;int error,expired;};
 static int logical(void *opaque,const char *path,const struct bw_pfs_inode *node){
     struct logical_metadata *p=opaque;
     int state=live(p->source);if(state){p->error=BW_CONTAINER_STALE;p->expired=state==-2;return -1;}
@@ -82,7 +82,7 @@ static int logical(void *opaque,const char *path,const struct bw_pfs_inode *node
     return 0;
 }
 static int inspect_image(struct scan *scan,const struct candidate *candidate,struct bw_catalog_item *item){
-    struct bw_source_smb *source=scan->source;struct bw_container_smb *image=calloc(1,sizeof *image);uint8_t *json=NULL;int result=-1,bad=0;
+    struct bw_source *source=scan->source;struct bw_container_smb *image=calloc(1,sizeof *image);uint8_t *json=NULL;int result=-1,bad=0;
     if(!image)return fail(scan->catalog,"catalog_image_allocation_failed");
     if(live(source)){bad=fail(scan->catalog,"catalog_image_scan_expired");goto done;}
     item->container_stage=BW_CATALOG_IMAGE_SIZE;
@@ -150,7 +150,7 @@ done:
     if(result){memset(item->title_id,0,sizeof item->title_id);memset(item->title,0,sizeof item->title);item->logical_boot_size=0;}
     free(json);free(image);return bad;
 }
-int bw_source_catalog_container_cover(struct bw_source_smb *source,const struct bw_catalog_item *item,size_t limit,void **out,size_t *size){
+int bw_source_catalog_container_cover(struct bw_source *source,const struct bw_catalog_item *item,size_t limit,void **out,size_t *size){
     if(out)*out=NULL;if(size)*size=0;
     if(!source||!item||!out||!size||item->state!=BW_CATALOG_CONTAINER_READY)return -1;
     if(!item->cover||!item->logical_icon_size||item->logical_icon_size>BW_SOURCE_SMALL_FILE_LIMIT||item->logical_icon_size>limit)return 1;
@@ -210,7 +210,7 @@ static int visit(void *opaque,const char *name,const struct bw_source_info *info
     }
     char path[1280];struct bw_source_info boot;
     n=snprintf(path,sizeof path,"%s/eboot.bin",c.source);if(n<0||(size_t)n>=sizeof path)return fail(out,"catalog_source_path_limit");
-    int status=bw_source_smb_file_info(p->source,path,&boot);
+    int status=bw_source_file_info(p->source,path,&boot);
     if(status<0)return fail(out,p->source->error?p->source->error:"catalog_source_failed");
     if(status==BW_SOURCE_MISSING){
         if(c.depth>=BW_CATALOG_MAX_DEPTH){out->unsearched++;return 0;}
@@ -221,12 +221,12 @@ static int visit(void *opaque,const char *name,const struct bw_source_info *info
     e->boot=boot;
     n=snprintf(path,sizeof path,"%s/sce_sys/param.json",c.source);if(n<0||(size_t)n>=sizeof path)return fail(out,"catalog_source_path_limit");
     void *json=NULL;size_t size=0;
-    status=bw_source_smb_small_file(p->source,path,BW_SOURCE_PARAM_LIMIT,&json,&size,&e->param);
+    status=bw_source_small_file(p->source,path,BW_SOURCE_PARAM_LIMIT,&json,&size,&e->param);
     if(status<0){free(json);return fail(out,p->source->error?p->source->error:"catalog_source_failed");}
     if(status||bw_source_param_metadata(json,size,e->title_id,e->title,sizeof e->title)){e->state=BW_CATALOG_BAD_PARAM;free(json);return 0;}
     free(json);e->state=BW_CATALOG_FOLDER;
     n=snprintf(path,sizeof path,"%s/sce_sys/icon0.png",c.source);if(n<0||(size_t)n>=sizeof path)return fail(out,"catalog_source_path_limit");
-    status=bw_source_smb_file_info(p->source,path,&e->icon);
+    status=bw_source_file_info(p->source,path,&e->icon);
     if(status<0)return fail(out,p->source->error?p->source->error:"catalog_source_failed");
     e->cover=!status&&e->icon.size&&e->icon.size<=BW_SOURCE_SMALL_FILE_LIMIT;
     return 0;
@@ -236,15 +236,15 @@ static int compare(const void *a,const void *b){
     while(*x&&*y){unsigned l=*x++,r=*y++;if(l>='A'&&l<='Z')l+=32;if(r>='A'&&r<='Z')r+=32;if(l!=r)return l<r?-1:1;}
     return *x?1:*y?-1:0;
 }
-int bw_source_catalog_scan(struct bw_source_smb *source,struct bw_source_catalog *out){
+int bw_source_catalog_scan(struct bw_source *source,struct bw_source_catalog *out){
     if(!source||!out)return -1;
     memset(out,0,sizeof *out);struct scan scan={.source=source,.catalog=out,.relative=""};
-    int bad=bw_source_smb_list(source,"",visit,&scan);out->collections=1;
+    int bad=bw_source_list(source,"",visit,&scan);out->collections=1;
     for(size_t i=0;!bad&&i<scan.count;i++){
         /* visit() may grow pending; do not retain a pointer into that array. */
         struct candidate c=scan.pending[i];scan.relative=c.source;scan.depth=c.depth+1;
         if(++out->collections>BW_CATALOG_MAX_COLLECTIONS){bad=fail(out,"catalog_collection_limit");break;}
-        bad=bw_source_smb_list(source,c.source,visit,&scan);
+        bad=bw_source_list(source,c.source,visit,&scan);
     }
     free(scan.pending);
     if(bad){if(!out->error)fail(out,source->error?source->error:"catalog_source_failed");return -1;}

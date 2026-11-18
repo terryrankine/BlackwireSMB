@@ -35,7 +35,7 @@ static void make_app(const char *apps,const char *content,char app[1800],char pa
 }
 int main(int argc,char **argv){C(argc==6);int folder=!strcmp(argv[1],"folder");const char *mode=argv[5];
     struct smb2_context context={0};C(strlen(argv[2])<sizeof context.root);strcpy(context.root,argv[2]);for(unsigned i=0;i<64;i++)context.handles[i].fd=-1;
-    struct bw_source_smb source={.smb=&context,.deadline=now()+600};struct bw_share_config config={0};strcpy(config.server,"192.0.2.1");strcpy(config.share,"FixtureShare");
+    struct bw_source source={.smb=&context,.deadline=now()+600};struct bw_share_config config={0};strcpy(config.server,"192.0.2.1");strcpy(config.share,"FixtureShare");
     struct bw_provider_binding binding;C(!bw_provider_binding_init(&binding,&config,folder?"fixture":"fixture.ffpfsc","PPSA99001",folder?BW_PROVIDER_FOLDER:BW_PROVIDER_CONTAINER));
     struct bw_container_smb *image=NULL;struct image_source input={.context=&context};if(!folder){load_image(&input,argv[3]);image=calloc(1,sizeof *image);C(image);strcpy(image->path,"fixture.ffpfsc");image->handle=(struct smb2fh *)image;image->admitted.ino=7;image->admitted.size=input.size;image->admitted.mtime=1700000000;struct bw_container_ops ops={image_read,image_generation};C(!bw_container_open(&image->container,&ops,&input,input.size));}
     char data[1600],apps[1600],db[1600],save[1600],log[1600],state[1800],path[2200],app[1800]={0},param[2000]={0};

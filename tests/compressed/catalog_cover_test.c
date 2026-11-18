@@ -29,21 +29,21 @@ struct smb2fh *smb2_open(struct smb2_context *c,const char *path,int mode){C(c&&
 int smb2_close(struct smb2_context *c,struct smb2fh *h){C(c&&c->handle==h);int result=close(h->fd);free(h);c->handle=NULL;if(fail_close){fail_close=0;return -EIO;}return result;}
 uint32_t smb2_get_max_read_size(struct smb2_context *c){C(c);return 65536;}
 int smb2_pread(struct smb2_context *c,struct smb2fh *h,uint8_t *bytes,uint32_t size,uint64_t at){C(c&&c->handle==h&&size<=65536);if(fail_read){fail_read=0;return -EIO;}ssize_t n=pread(h->fd,bytes,size,(off_t)at);return n<0?-errno:(int)n;}
-int bw_source_smb_list(struct bw_source_smb *s,const char *path,bw_source_visit_fn visit,void *opaque){
+int bw_source_smb_list(struct bw_source *s,const char *path,bw_source_visit_fn visit,void *opaque){
  C(s&&s->smb&&!path[0]);struct stat st;C(!stat(input,&st));
  struct bw_source_info info={.size=st.st_size,.inode=st.st_ino,
   .mtime_ticks=UINT64_C(116444736000000000)+(uint64_t)st.st_mtim.tv_sec*10000000u+st.st_mtim.tv_nsec/100,
   .ctime_ticks=UINT64_C(116444736000000000)+(uint64_t)st.st_ctim.tv_sec*10000000u+st.st_ctim.tv_nsec/100};
  return visit(opaque,"fixture.ffpfsc",&info);
 }
-int bw_source_smb_file_info(struct bw_source_smb *s,const char *p,struct bw_source_info *i){(void)s;(void)p;(void)i;C(0);return -1;}
-int bw_source_smb_small_file(struct bw_source_smb *s,const char *p,size_t n,void **b,size_t *z,struct bw_source_info *i){(void)s;(void)p;(void)n;(void)b;(void)z;(void)i;C(0);return -1;}
+int bw_source_smb_file_info(struct bw_source *s,const char *p,struct bw_source_info *i){(void)s;(void)p;(void)i;C(0);return -1;}
+int bw_source_smb_small_file(struct bw_source *s,const char *p,size_t n,void **b,size_t *z,struct bw_source_info *i){(void)s;(void)p;(void)n;(void)b;(void)z;(void)i;C(0);return -1;}
 static double now(void){struct timespec t;C(!clock_gettime(CLOCK_MONOTONIC,&t));return t.tv_sec+t.tv_nsec/1e9;}
-static void reset(struct bw_source_smb *s){if(s->smb)smb2_destroy_context(s->smb);memset(s,0,sizeof *s);s->smb=calloc(1,sizeof *s->smb);C(s->smb);s->deadline=now()+120;fail_read=fail_close=changed=0;}
-static void no_bytes(struct bw_source_smb *s,const struct bw_catalog_item *item){void *bytes=(void *)1;size_t size=123;C(bw_source_catalog_container_cover(s,item,BW_SOURCE_SMALL_FILE_LIMIT,&bytes,&size)==-1);C(!bytes&&!size);}
+static void reset(struct bw_source *s){if(s->smb)smb2_destroy_context(s->smb);memset(s,0,sizeof *s);s->smb=calloc(1,sizeof *s->smb);C(s->smb);s->deadline=now()+120;fail_read=fail_close=changed=0;}
+static void no_bytes(struct bw_source *s,const struct bw_catalog_item *item){void *bytes=(void *)1;size_t size=123;C(bw_source_catalog_container_cover(s,item,BW_SOURCE_SMALL_FILE_LIMIT,&bytes,&size)==-1);C(!bytes&&!size);}
 int main(int argc,char **argv){
  C(argc==4);input=argv[1];size_t expected=(size_t)strtoull(argv[2],NULL,10);int variant=atoi(argv[3]);
- struct bw_source_smb s={0};reset(&s);struct bw_source_catalog catalog={0};
+ struct bw_source s={0};reset(&s);struct bw_source_catalog catalog={0};
  C(!bw_source_catalog_scan(&s,&catalog));C(catalog.count==1&&catalog.items[0].state==BW_CATALOG_CONTAINER_READY);
  struct bw_catalog_item item=catalog.items[0];struct bw_source_info empty={0};C(!memcmp(&item.icon,&empty,sizeof empty));
  cases++;C(item.cover==(expected>0&&expected<=BW_SOURCE_SMALL_FILE_LIMIT));C(item.logical_icon_size==(item.cover?expected:0));

@@ -65,7 +65,7 @@ static int home_startup_control(struct home_worker *h,const struct bw_reader_sel
     return home_settings(h,NULL)||bw_home_session_current(&h->session)?-1:0;
 }
 static int home_source(struct home_worker *h,const struct bw_share_config *config,const struct bw_reader_selection *selected){
-    struct bw_source_smb source={.deadline=h->deadline};uint8_t map[32],generation[32];const char *error=NULL;int result=-1;
+    struct bw_source source={.deadline=h->deadline};uint8_t map[32],generation[32];const char *error=NULL;int result=-1;
     if(home_lease(h))return -1;
     double remain=h->deadline-now();if(remain<=0)return -1;
     unsigned timeout=(unsigned)ceil(remain);if(timeout>10)timeout=10;if(!timeout)timeout=1;

@@ -85,18 +85,18 @@ static void pure(void){
     __real_free(w);__real_free(out);
 }
 static void reset_counts(void){stats=heldstats=reads=opens=closes=destroys=0;cache_freed_at=drained_at=sequence=0;pending_destination=NULL;C(!tracked_cache);}
-static void begin(struct bw_source_smb *s,struct bw_container_smb *image,const char *fault,int which){
+static void begin(struct bw_source *s,struct bw_container_smb *image,const char *fault,int which){
     reset_counts();mode=fault;source=s;memset(s,0,sizeof *s);s->smb=calloc(1,sizeof *s->smb);C(s->smb);
     struct timespec t;C(!clock_gettime(CLOCK_MONOTONIC,&t));s->deadline=t.tv_sec+t.tv_nsec/1e9+120;observed_image=image;
     int result=which==0?bw_container_smb_open(image,s->smb,"Neutral.ffpfsc"):which==1?bw_container_smb_open_owned(image,&s->smb,"Neutral.ffpfsc"):bw_container_smb_open_owned_metadata(image,&s->smb,"Neutral.ffpfsc");
     C(!result&&image->container.ready);C((image->metadata_window!=NULL)==(which==2&&!fail_cache_allocation));
 }
-static void end(struct bw_source_smb *s,struct bw_container_smb *image){
+static void end(struct bw_source *s,struct bw_container_smb *image){
     C(!bw_container_smb_close(image)&&!image->metadata_window&&!image->metadata_window_active);
     if(s->smb){smb2_destroy_context(s->smb);s->smb=NULL;}C(destroys==1&&!tracked_cache&&!pending_destination);observed_image=NULL;
 }
 static void adapter(void){
-    struct bw_source_smb s;struct bw_container_smb image;uint8_t out[65536];unsigned uncached_reads=0;
+    struct bw_source s;struct bw_container_smb image;uint8_t out[65536];unsigned uncached_reads=0;
     for(int which=0;which<3;which++){
         cases++;begin(&s,&image,"valid",which);unsigned before=reads;
         C(!exact_read(&image,100,out,1));uint8_t first=out[0];C(!exact_read(&image,101,out,1));

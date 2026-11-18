@@ -59,7 +59,7 @@ static uint8_t *read_span(struct pp_work *w,uint64_t offset,uint64_t size){
        size>BW_PP_MAX_READ_BYTES-w->plan->read_bytes||w->plan->read_calls>=BW_PP_MAX_READ_CALLS){fail(w->owner,"packed_span_or_budget_limit");return NULL;}
     if(sealed(w)||guard(w))return NULL;uint8_t *bytes=malloc((size_t)size);if(!bytes){fail(w->owner,"packed_allocation_refused");return NULL;}
     w->span_used=0;w->span_size=(size_t)size;w->span_bytes=bytes;
-    int bad=bw_source_smb_read_range(w->state->request.source,w->state->request.snapshot,w->state->archive,offset,size,guard,w,consume,w);
+    int bad=bw_source_read_range(w->state->request.source,w->state->request.snapshot,w->state->archive,offset,size,guard,w,consume,w);
     w->span_bytes=NULL;if(bad||w->span_used!=(size_t)size||sealed(w)||guard(w)){free(bytes);fail(w->owner,"packed_range_or_current_refused");return NULL;}
     return bytes;
 }

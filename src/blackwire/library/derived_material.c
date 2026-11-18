@@ -30,7 +30,7 @@ struct dm_state {
     struct bw_derived_material_view visible,captured;
     struct bw_native_job_view *jobs;
     const void *local_state,*parser_state;
-    struct bw_source_smb *source;struct smb2_context *connection;double deadline;
+    struct bw_source *source;struct smb2_context *connection;double deadline;
     const void *base_map,*base_digests;size_t map_size,digest_size;
 };
 _Static_assert(sizeof(struct dm_state)<=8192,"material owned state bound");

@@ -16,13 +16,13 @@ struct bw_source_preparation {
 /* Build the existing manifest + BWDIG001 startup digests directly from SMB.
  * The caller owns the connection and bundle. No source/console writes, hooks,
  * registration, process control or game launch are performed. */
-int bw_source_prepare(struct bw_source_smb *,const char *game,const char *run,struct bw_source_preparation *);
+int bw_source_prepare(struct bw_source *,const char *game,const char *run,struct bw_source_preparation *);
 /* Native-controller path: exact share key, separate console component and
  * expected validated catalog title. A changed title cannot yield a bundle. */
-int bw_source_prepare_bound(struct bw_source_smb *,const char *source,const char *game,const char *title,const char *run,struct bw_source_preparation *);
-int bw_source_prepare_bound_policy(struct bw_source_smb *,const char *source,const char *game,const char *title,const char *run,
+int bw_source_prepare_bound(struct bw_source *,const char *source,const char *game,const char *title,const char *run,struct bw_source_preparation *);
+int bw_source_prepare_bound_policy(struct bw_source *,const char *source,const char *game,const char *title,const char *run,
     struct bw_source_preparation *,enum bw_source_plan_policy);
 /* Full namespace and generation comparison, not a per-file HTTP lease. */
-int bw_source_prepare_current(struct bw_source_smb *,const struct bw_source_preparation *);
+int bw_source_prepare_current(struct bw_source *,const struct bw_source_preparation *);
 void bw_source_prepare_destroy(struct bw_source_preparation *);
 #endif

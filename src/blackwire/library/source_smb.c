@@ -33,9 +33,9 @@ struct bs_op {
 };
 struct bs_directory { smb2_file_id id;struct bw_source_info before;int opened; };
 struct bs_limits {uint32_t entries,directories;};
-struct bs_walk { struct bw_source_smb *source;struct bw_source_plan *plan;const char *relative;unsigned depth;struct bw_source_snapshot *snapshot;struct bs_limits *limits;const char *remote;unsigned prefix_depth; };
-static int bs_catalog_parents(struct bw_source_smb *,const char *,int,struct bs_directory *,unsigned *);
-static int bs_catalog_close(struct bw_source_smb *,struct bs_directory *,unsigned);
+struct bs_walk { struct bw_source *source;struct bw_source_plan *plan;const char *relative;unsigned depth;struct bw_source_snapshot *snapshot;struct bs_limits *limits;const char *remote;unsigned prefix_depth; };
+static int bs_catalog_parents(struct bw_source *,const char *,int,struct bs_directory *,unsigned *);
+static int bs_catalog_close(struct bw_source *,struct bs_directory *,unsigned);
 
 static double bs_now(void){struct timespec t;return clock_gettime(CLOCK_MONOTONIC,&t)?-1:(double)t.tv_sec+(double)t.tv_nsec/1e9;}
 const char *bw_source_phase_name(enum bw_source_phase phase){
@@ -43,36 +43,36 @@ const char *bw_source_phase_name(enum bw_source_phase phase){
         "checking_destination","copying_startup","preparing_assets","building_index","verifying_index","measuring_storage","prepared","error"};
     return (unsigned)phase<BW_SOURCE_PHASE_COUNT?names[phase]:"unknown";
 }
-static void bs_progress(struct bw_source_smb *p){
+static void bs_progress(struct bw_source *p){
     if(!p->observe)return;
     struct bw_source_progress value=p->progress;
     value.requests=p->requests;value.entries=p->entries;value.pages=p->pages;value.source_bytes=p->content_bytes;
     value.phase_entries=p->entries-p->phase_entry_base;value.monotonic_seconds=bs_now();
     p->observe(p->observe_opaque,&value);
 }
-void bw_source_smb_progress(struct bw_source_smb *p,enum bw_source_phase phase,uint32_t files,uint32_t total,uint64_t bytes,uint64_t byte_total){
+void bw_source_smb_progress(struct bw_source *p,enum bw_source_phase phase,uint32_t files,uint32_t total,uint64_t bytes,uint64_t byte_total){
     if(!p)return;
     if(p->progress.phase!=phase)p->phase_entry_base=p->entries;
     p->progress.phase=phase;p->progress.files_done=files;p->progress.files_total=total;p->progress.bytes_done=bytes;p->progress.bytes_total=byte_total;
     bs_progress(p);
 }
-static int bs_fail(struct bw_source_smb *p,const char *error){if(!p->error)p->error=error;return -1;}
-static int bs_poison(struct bw_source_smb *p,const char *error){
+static int bs_fail(struct bw_source *p,const char *error){if(!p->error)p->error=error;return -1;}
+static int bs_poison(struct bw_source *p,const char *error){
     bs_fail(p,error);
     if(p->smb){struct smb2_context *owned=p->smb;p->smb=NULL;smb2_destroy_context(owned);}
     return -1;
 }
-static int bs_live(struct bw_source_smb *p){
+static int bs_live(struct bw_source *p){
     double now=bs_now();
     return !p->smb||now<0||now>=p->deadline?bs_fail(p,"source_scan_expired"):0;
 }
-static int bs_read_capacity(struct bw_source_smb *p,uint32_t *out){
+static int bs_read_capacity(struct bw_source *p,uint32_t *out){
     if(bs_live(p))return -1;
     uint32_t maximum=smb2_get_max_read_size(p->smb);
     if(!maximum)return bs_fail(p,"source_max_read_unavailable");
     *out=maximum<BS_READ_BYTES?maximum:BS_READ_BYTES;return 0;
 }
-static int bs_wait(struct bw_source_smb *p,struct smb2_pdu *pdu,struct bs_op *op){
+static int bs_wait(struct bw_source *p,struct smb2_pdu *pdu,struct bs_op *op){
     if(!pdu)return bs_fail(p,"source_request_allocation_failed");
     if(bs_live(p)){smb2_free_pdu(p->smb,pdu);return -1;}
     p->requests++;bs_progress(p);smb2_queue_pdu(p->smb,pdu);
@@ -132,7 +132,7 @@ static void bs_read(struct smb2_context *smb,int status,void *reply,void *opaque
     }
     op->done=1;
 }
-static int bs_close(struct bw_source_smb *p,struct bs_directory *directory){
+static int bs_close(struct bw_source *p,struct bs_directory *directory){
     if(!directory->opened)return 0;
     directory->opened=0;
     if(!p->smb)return -1;
@@ -140,18 +140,18 @@ static int bs_close(struct bw_source_smb *p,struct bs_directory *directory){
     if(bs_wait(p,smb2_cmd_close_async(p->smb,&request,bs_closed,&op),&op)||op.status)return bs_poison(p,"source_directory_close_failed");
     return 0;
 }
-static int bs_info(struct bw_source_smb *p,const struct bs_directory *directory,struct bw_source_info *out){
+static int bs_info(struct bw_source *p,const struct bs_directory *directory,struct bw_source_info *out){
     struct smb2_query_info_request request={0};struct bs_op op={0};
     request.info_type=SMB2_0_INFO_FILE;request.file_info_class=SMB2_FILE_ALL_INFORMATION;request.output_buffer_length=4096;
     memcpy(request.file_id,directory->id,SMB2_FD_SIZE);
     if(bs_wait(p,smb2_cmd_query_info_async(p->smb,&request,bs_queried,&op),&op)||op.status)return bs_fail(p,"source_directory_stat_failed");
     *out=op.info;return 0;
 }
-static int bs_stat(struct bw_source_smb *p,const struct bs_directory *directory,struct bw_source_info *out){
+static int bs_stat(struct bw_source *p,const struct bs_directory *directory,struct bw_source_info *out){
     if(bs_info(p,directory,out))return -1;
     return !(out->attributes&BS_ATTR_DIRECTORY)||(out->attributes&(BS_ATTR_REPARSE|BS_ATTR_DEVICE))?bs_fail(p,"source_directory_is_linked_or_special"):0;
 }
-static int bs_open(struct bw_source_smb *p,const char *path,struct bs_directory *directory){
+static int bs_open(struct bw_source *p,const char *path,struct bs_directory *directory){
     struct smb2_create_request request={0};struct bs_op op={0};memset(directory,0,sizeof *directory);
     request.impersonation_level=SMB2_IMPERSONATION_IMPERSONATION;
     request.desired_access=SMB2_FILE_LIST_DIRECTORY|SMB2_FILE_READ_ATTRIBUTES|SMB2_FILE_READ_EA;
@@ -171,7 +171,7 @@ static int bs_same(const struct bw_source_info *a,const struct bw_source_info *b
 }
 static int bs_walk_directory(struct bs_walk *walk);
 static int bs_entry(void *opaque,const char *name,const struct bw_source_info *info){
-    struct bs_walk *walk=opaque;struct bw_source_smb *p=walk->source;
+    struct bs_walk *walk=opaque;struct bw_source *p=walk->source;
     if(!strcmp(name,".")||!strcmp(name,".."))return 0;
     if(++walk->limits->entries>BS_MAX_ENTRIES||p->entries==UINT32_MAX||bs_live(p))return bs_fail(p,"source_entry_or_time_limit");
     p->entries++;
@@ -189,7 +189,7 @@ static int bs_entry(void *opaque,const char *name,const struct bw_source_info *i
     return 0;
 }
 static int bs_walk_directory(struct bs_walk *walk){
-    struct bw_source_smb *p=walk->source;struct bs_directory directory;char path[2*BW_MANIFEST_MAX_PATH+2];int result=-1;
+    struct bw_source *p=walk->source;struct bs_directory directory;char path[2*BW_MANIFEST_MAX_PATH+2];int result=-1;
     if(walk->prefix_depth>BS_MAX_DEPTH||walk->depth>BS_MAX_DEPTH-walk->prefix_depth||++walk->limits->directories>BS_MAX_ENTRIES||p->directories==UINT32_MAX||bs_live(p))return bs_fail(p,"source_directory_or_time_limit");
     p->directories++;
     int n=snprintf(path,sizeof path,"%s%s%s",walk->remote,*walk->relative?"/":"",walk->relative);
@@ -216,7 +216,7 @@ done:
     if(bs_close(p,&directory))result=-1;
     return result;
 }
-static int bs_plan(struct bw_source_smb *p,const char *game,const char *remote,struct bw_source_map *map,struct bw_source_snapshot *snapshot,int bound,enum bw_source_plan_policy policy){
+static int bs_plan(struct bw_source *p,const char *game,const char *remote,struct bw_source_map *map,struct bw_source_snapshot *snapshot,int bound,enum bw_source_plan_policy policy){
     if(!p||!map)return -1;
     memset(map,0,sizeof *map);
     if(p->error||bs_live(p))return -1;
@@ -238,20 +238,20 @@ done:
     bw_source_plan_destroy(&plan);
     return result;
 }
-int bw_source_smb_plan(struct bw_source_smb *p,const char *game,struct bw_source_map *map){return bs_plan(p,game,game,map,NULL,0,BW_SOURCE_PLAN_LEGACY);}
-int bw_source_smb_snapshot(struct bw_source_smb *p,const char *game,struct bw_source_map *map,struct bw_source_snapshot *snapshot){
+int bw_source_smb_plan(struct bw_source *p,const char *game,struct bw_source_map *map){return bs_plan(p,game,game,map,NULL,0,BW_SOURCE_PLAN_LEGACY);}
+int bw_source_smb_snapshot(struct bw_source *p,const char *game,struct bw_source_map *map,struct bw_source_snapshot *snapshot){
     if(!p||!map||!snapshot)return -1;
     memset(map,0,sizeof *map);
     if(bw_source_snapshot_init(snapshot,game))return bs_fail(p,snapshot->error);
     return bs_plan(p,game,game,map,snapshot,0,BW_SOURCE_PLAN_LEGACY);
 }
-int bw_source_smb_snapshot_bound_policy(struct bw_source_smb *p,const char *remote,const char *game,struct bw_source_map *map,struct bw_source_snapshot *snapshot,enum bw_source_plan_policy policy){
+int bw_source_smb_snapshot_bound_policy(struct bw_source *p,const char *remote,const char *game,struct bw_source_map *map,struct bw_source_snapshot *snapshot,enum bw_source_plan_policy policy){
     if(!p||!map||!snapshot)return -1;
     memset(map,0,sizeof *map);
     if(bw_source_snapshot_init_bound(snapshot,remote,game))return bs_fail(p,snapshot->error);
     return bs_plan(p,game,remote,map,snapshot,1,policy);
 }
-int bw_source_smb_snapshot_bound(struct bw_source_smb *p,const char *remote,const char *game,struct bw_source_map *map,struct bw_source_snapshot *snapshot){
+int bw_source_smb_snapshot_bound(struct bw_source *p,const char *remote,const char *game,struct bw_source_map *map,struct bw_source_snapshot *snapshot){
     return bw_source_smb_snapshot_bound_policy(p,remote,game,map,snapshot,BW_SOURCE_PLAN_LEGACY);
 }
 /* QUERY_INFO exposes times at microsecond precision. Directory rows retain
@@ -259,7 +259,7 @@ int bw_source_smb_snapshot_bound(struct bw_source_smb *p,const char *remote,cons
 static int bs_expected(const struct bw_source_info *a,const struct bw_source_info *b){
     return a&&b&&a->size==b->size&&a->inode==b->inode&&a->mtime_ticks/10==b->mtime_ticks/10&&a->ctime_ticks/10==b->ctime_ticks/10&&a->attributes==b->attributes;
 }
-static int bs_file_open(struct bw_source_smb *p,const char *path,const struct bw_source_info *expected,struct bs_directory *file){
+static int bs_file_open(struct bw_source *p,const char *path,const struct bw_source_info *expected,struct bs_directory *file){
     struct smb2_create_request request={0};struct bs_op op={0};memset(file,0,sizeof *file);
     request.impersonation_level=SMB2_IMPERSONATION_IMPERSONATION;
     request.desired_access=SMB2_FILE_READ_DATA|SMB2_FILE_READ_ATTRIBUTES|SMB2_FILE_READ_EA;
@@ -271,7 +271,7 @@ static int bs_file_open(struct bw_source_smb *p,const char *path,const struct bw
         (expected&&!bs_expected(expected,&file->before)))return bs_fail(p,"source_file_is_linked_special_or_changed");
     return 0;
 }
-int bw_source_smb_read(struct bw_source_smb *p,const struct bw_source_snapshot *snapshot,const char *path,bw_source_consume_fn consume,void *opaque){
+int bw_source_smb_read(struct bw_source *p,const struct bw_source_snapshot *snapshot,const char *path,bw_source_consume_fn consume,void *opaque){
     if(!p||!snapshot||!path||!consume||p->error||bs_live(p))return -1;
     size_t length=strlen(path);
     const struct bw_source_info *expected=bw_source_snapshot_find(snapshot,path);
@@ -335,7 +335,7 @@ done:
  * view only separates expected per-item absence from a fatal scan failure.
  * If a nested request destroys the context, publish smb=NULL to the owner
  * before returning; no outer callback may retain a freed context. */
-static int bs_lookup_result(struct bw_source_smb *owner,struct bw_source_smb *view,int result){
+static int bs_lookup_result(struct bw_source *owner,struct bw_source *view,int result){
     int recover=0;
     if(view->smb&&view->error){
         enum bw_tp_error class=bw_tp_error_from_nt(view->last_status);
@@ -349,7 +349,7 @@ static int bs_lookup_result(struct bw_source_smb *owner,struct bw_source_smb *vi
     if(recover){view->error=owner->error;view->last_status=owner->last_status;result=recover;}
     *owner=*view;return result;
 }
-static int bs_catalog_parents(struct bw_source_smb *p,const char *path,int include_leaf,struct bs_directory *parents,unsigned *count){
+static int bs_catalog_parents(struct bw_source *p,const char *path,int include_leaf,struct bs_directory *parents,unsigned *count){
     char relative[1024];size_t size=strlen(path);*count=0;
     if(size>=sizeof relative||(size&&bw_manifest_validate_path(path,size)))return bs_fail(p,"invalid_catalog_source_path");
     memcpy(relative,path,size+1);
@@ -371,7 +371,7 @@ static int bs_catalog_parents(struct bw_source_smb *p,const char *path,int inclu
     }
     return 0;
 }
-static int bs_catalog_close(struct bw_source_smb *p,struct bs_directory *parents,unsigned count){
+static int bs_catalog_close(struct bw_source *p,struct bs_directory *parents,unsigned count){
     int bad=0;
     while(count){struct bs_directory *parent=&parents[--count];
         if(parent->opened&&p->smb){struct bw_source_info after;
@@ -380,13 +380,13 @@ static int bs_catalog_close(struct bw_source_smb *p,struct bs_directory *parents
     }
     return bad?-1:0;
 }
-static int bs_catalog_file(struct bw_source_smb *owner,const char *path,int contents,size_t maximum,void **bytes,size_t *size,struct bw_source_info *info){
+static int bs_catalog_file(struct bw_source *owner,const char *path,int contents,size_t maximum,void **bytes,size_t *size,struct bw_source_info *info){
     if(bytes)*bytes=NULL;
     if(size)*size=0;
     if(info)memset(info,0,sizeof *info);
     if(!owner||!path||!*path||!info||owner->error||bs_live(owner))return -1;
     if(contents&&(!bytes||!size||!maximum||maximum>BW_SOURCE_SMALL_FILE_LIMIT))return bs_fail(owner,"invalid_catalog_file_limit");
-    struct bw_source_smb p=*owner;struct bs_directory parents[BS_MAX_DEPTH+1],file={0};memset(parents,0,sizeof parents);
+    struct bw_source p=*owner;struct bs_directory parents[BS_MAX_DEPTH+1],file={0};memset(parents,0,sizeof parents);
     unsigned count=0;uint8_t *output=NULL;int result=-1;
     if(bs_catalog_parents(&p,path,0,parents,&count)||bs_file_open(&p,path,NULL,&file))goto done;
     if(contents){
@@ -411,9 +411,9 @@ done:
     if(result!=BW_SOURCE_FOUND)memset(info,0,sizeof *info);
     free(output);return result;
 }
-int bw_source_smb_file_info(struct bw_source_smb *p,const char *path,struct bw_source_info *info){return bs_catalog_file(p,path,0,0,NULL,NULL,info);}
-int bw_source_smb_small_file(struct bw_source_smb *p,const char *path,size_t maximum,void **bytes,size_t *size,struct bw_source_info *info){return bs_catalog_file(p,path,1,maximum,bytes,size,info);}
-struct bs_listing {struct bw_source_smb *source;bw_source_visit_fn visit;void *opaque;uint32_t count;};
+int bw_source_smb_file_info(struct bw_source *p,const char *path,struct bw_source_info *info){return bs_catalog_file(p,path,0,0,NULL,NULL,info);}
+int bw_source_smb_small_file(struct bw_source *p,const char *path,size_t maximum,void **bytes,size_t *size,struct bw_source_info *info){return bs_catalog_file(p,path,1,maximum,bytes,size,info);}
+struct bs_listing {struct bw_source *source;bw_source_visit_fn visit;void *opaque;uint32_t count;};
 static int bs_catalog_entry(void *opaque,const char *name,const struct bw_source_info *info){
     struct bs_listing *list=opaque;
     if(!strcmp(name,".")||!strcmp(name,".."))return 0;
@@ -421,7 +421,7 @@ static int bs_catalog_entry(void *opaque,const char *name,const struct bw_source
     list->source->entries++;
     return list->visit(list->opaque,name,info);
 }
-int bw_source_smb_list(struct bw_source_smb *p,const char *path,bw_source_visit_fn visit,void *opaque){
+int bw_source_smb_list(struct bw_source *p,const char *path,bw_source_visit_fn visit,void *opaque){
     if(!p||!path||!visit||p->error||bs_live(p))return -1;
     struct bs_directory parents[BS_MAX_DEPTH+1];memset(parents,0,sizeof parents);unsigned count=0;uint8_t *page=NULL;int result=-1;
     if(bs_catalog_parents(p,path,1,parents,&count))goto done;
@@ -445,7 +445,7 @@ done:
  * every <=64KiB piece retains its own job/deadline checks. */
 #include <float.h>
 static int bs_range_finite(double value){return value>=-DBL_MAX&&value<=DBL_MAX;}
-static int bs_range_current(struct bw_source_smb *p,bw_source_range_current_fn current,void *job){
+static int bs_range_current(struct bw_source *p,bw_source_range_current_fn current,void *job){
     double now=bs_now();
     if(p->error)return -1;
     if(!p->smb||!bs_range_finite(p->deadline)||!bs_range_finite(now)||now<0||now>=p->deadline)return bs_fail(p,"source_range_expired");
@@ -455,7 +455,7 @@ static int bs_range_current(struct bw_source_smb *p,bw_source_range_current_fn c
     if(!p->smb||!bs_range_finite(p->deadline)||!bs_range_finite(now)||now<0||now>=p->deadline)return bs_fail(p,"source_range_expired");
     return 0;
 }
-static int bs_range_wait(struct bw_source_smb *p,struct smb2_pdu *pdu,struct bs_op *op,bw_source_range_current_fn current,void *job){
+static int bs_range_wait(struct bw_source *p,struct smb2_pdu *pdu,struct bs_op *op,bw_source_range_current_fn current,void *job){
     if(!pdu)return bs_fail(p,"source_request_allocation_failed");
     if(bs_range_current(p,current,job)){smb2_free_pdu(p->smb,pdu);return -1;}
     p->requests++;bs_progress(p);smb2_queue_pdu(p->smb,pdu);
@@ -474,7 +474,7 @@ static int bs_range_wait(struct bw_source_smb *p,struct smb2_pdu *pdu,struct bs_
 }
 
 struct bs_range_guard {
-    struct bw_source_smb *source;bw_source_range_current_fn current;void *job;
+    struct bw_source *source;bw_source_range_current_fn current;void *job;
     bw_source_observer_fn previous;void *previous_opaque;double deadline;int inside,refused;
 };
 static void bs_range_observe(void *opaque,const struct bw_source_progress *progress){
@@ -490,7 +490,7 @@ static void bs_range_observe(void *opaque,const struct bw_source_progress *progr
     guard->inside=0;
 }
 
-int bw_source_smb_read_range(struct bw_source_smb *p,const struct bw_source_snapshot *snapshot,const char *path,
+int bw_source_smb_read_range(struct bw_source *p,const struct bw_source_snapshot *snapshot,const char *path,
     uint64_t offset,uint64_t length,bw_source_range_current_fn current,void *job,bw_source_consume_fn consume,void *opaque){
     if(!p)return -1;
     if(p->observe==bs_range_observe)return bs_fail(p,"source_range_nested_operation");

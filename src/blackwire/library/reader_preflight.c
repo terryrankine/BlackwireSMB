@@ -192,7 +192,7 @@ static int batch_selected(const struct bw_reader_selection *s,const struct bw_na
  * the context/provider are destroyed before its stack-owned lease expires. */
 struct batch_preflight_lease {
     const struct bw_reader_preflight *request;
-    struct bw_source_smb *source;
+    struct bw_source *source;
     struct smb2_context *connection;
     double deadline;
 };

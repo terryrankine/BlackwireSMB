@@ -11,7 +11,7 @@
 struct nbc_loose {char path[241];uint64_t size;uint8_t sha256[32];};
 struct nbc_state {
     struct bw_native_batch_context *owner;
-    struct bw_source_provider *original;struct bw_source_smb *source;struct smb2_context *connection;
+    struct bw_source_provider *original;struct bw_source *source;struct smb2_context *connection;
     struct bw_provider_binding binding;const uint8_t *map,*digests;size_t map_size,digest_size;
     uint8_t seal[32],map_sha256[32],digests_sha256[32];
     int (*current)(void *);void *job;uint64_t epoch;double deadline;

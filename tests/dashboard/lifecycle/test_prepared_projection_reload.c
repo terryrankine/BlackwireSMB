@@ -28,7 +28,7 @@ int smb2_close(struct smb2_context *s,struct smb2fh *h){(void)s;(void)h;C(0);ret
 static unsigned fd_count(void){DIR *d=opendir("/proc/self/fd");C(d);unsigned n=0;for(struct dirent *e;(e=readdir(d));)if(e->d_name[0]!='.')n++;C(!closedir(d));return n;}
 int main(int argc,char **argv){
     C(argc==7);unsigned policy=!strncmp(argv[5],"legacy",6)?BW_SOURCE_PLAN_LEGACY:BW_SOURCE_PLAN_COMPANIONS_V1;unsigned expected_policy=policy==BW_SOURCE_PLAN_LEGACY?0:3;unsigned expected_upgrade=!strcmp(argv[5],"legacy-f2")||!strcmp(argv[5],"legacy-f1-extra");const char *fault=argv[6];int folder=!strcmp(argv[1],"folder");struct smb2_context context={0};C(strlen(argv[2])<sizeof context.root);strcpy(context.root,argv[2]);for(unsigned i=0;i<64;i++)context.handles[i].fd=-1;
-    struct bw_source_smb source={.smb=&context,.deadline=now()+600};struct bw_share_config config={0};strcpy(config.server,"192.0.2.1");strcpy(config.share,"FixtureShare");
+    struct bw_source source={.smb=&context,.deadline=now()+600};struct bw_share_config config={0};strcpy(config.server,"192.0.2.1");strcpy(config.share,"FixtureShare");
     struct bw_provider_binding binding;C(!bw_provider_binding_init(&binding,&config,folder?"fixture":"fixture.ffpfsc","PPSA99001",folder?BW_PROVIDER_FOLDER:BW_PROVIDER_CONTAINER));
     struct bw_container_smb *image=NULL;struct image_source input={.context=&context};
     if(!folder){load_image(&input,argv[3]);image=calloc(1,sizeof *image);C(image);strcpy(image->path,"fixture.ffpfsc");image->handle=(struct smb2fh *)image;image->admitted.ino=7;image->admitted.size=input.size;image->admitted.mtime=1700000000;struct bw_container_ops ops={image_read,image_generation};C(!bw_container_open(&image->container,&ops,&input,input.size));}
@@ -38,7 +38,7 @@ int main(int argc,char **argv){
     bw_source_provider_destroy(&provider);C(!context.open);struct bw_native_prepared raw_before={0};C(!bw_native_send_inspect(argv[4],&binding,&raw_before)&&raw_before.state==BW_PREPARED_VALID&&raw_before.prepared_policy==expected_policy&&!raw_before.bytes_verified&&!memcmp(raw_before.record_sha256,fresh.record_sha256,32));
     /* A discovery refresh reconstructs source authority without changing the
      * console receipt. Run the real provider again with a distinct run token. */
-    source=(struct bw_source_smb){.smb=&context,.deadline=now()+600};
+    source=(struct bw_source){.smb=&context,.deadline=now()+600};
     C(!bw_source_provider_prepare_policy(&provider,&binding,&source,image,"cccccccccccccccccccccccccccccccc",32u*1024u*1024u,current,&context,policy));C(provider.bundle.ready);bw_source_provider_destroy(&provider);C(!context.open);
     char target[2400],state[2200],game[2200];C(snprintf(state,sizeof state,"%s/native-prepared/%s",argv[4],binding.binding.game)>0);C(snprintf(game,sizeof game,"%s/games/%s",argv[4],binding.binding.game)>0);
     int positive=!strcmp(fault,"none");

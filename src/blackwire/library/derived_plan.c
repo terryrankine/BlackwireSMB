@@ -15,7 +15,7 @@ struct dp_state {
     struct bw_derived_destination_grant grant;
     struct bw_derived_destination_claim claim;
     struct bw_provider_binding binding;
-    struct bw_source_smb *source;
+    struct bw_source *source;
     struct smb2_context *connection;
     struct bw_source_snapshot snapshot;
     struct bw_source_map base;

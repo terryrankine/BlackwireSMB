@@ -170,7 +170,7 @@ struct db_live {
     struct bw_batch_destination_grant grant;
     struct bw_batch_destination_claim claim;
     struct bw_provider_binding binding;
-    struct bw_source_smb *source;struct smb2_context *connection;double deadline;
+    struct bw_source *source;struct smb2_context *connection;double deadline;
     struct bw_source_snapshot snapshot;
     struct bw_source_map base;
     const uint8_t *base_digests;size_t base_digest_size;

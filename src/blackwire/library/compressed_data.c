@@ -109,7 +109,7 @@ void bw_compressed_data_destroy(struct bw_compressed_data *p) {
 }
 int bw_compressed_data_prepare_policy(struct bw_compressed_data *p,struct bw_container_smb *image,
                               const struct bw_source_binding *binding,uint64_t budget,
-                              struct bw_source_smb *progress,int (*current)(void *),void *opaque,enum bw_source_plan_policy policy) {
+                              struct bw_source *progress,int (*current)(void *),void *opaque,enum bw_source_plan_policy policy) {
     if (!p || p->image || p->map.bytes || p->digests || p->buffer || p->files.files || p->ready || p->failed || p->busy)
         return BW_COMPRESSED_DATA_STATE;
     if (!image || !binding || !progress || !current || !budget || budget>BW_COMPRESSED_DATA_MAX_LOCAL_BYTES)
@@ -181,7 +181,7 @@ done:
     return result;
 }
 int bw_compressed_data_prepare(struct bw_compressed_data *p,struct bw_container_smb *image,
-    const struct bw_source_binding *binding,uint64_t budget,struct bw_source_smb *progress,int (*current)(void *),void *opaque){
+    const struct bw_source_binding *binding,uint64_t budget,struct bw_source *progress,int (*current)(void *),void *opaque){
     return bw_compressed_data_prepare_policy(p,image,binding,budget,progress,current,opaque,BW_SOURCE_PLAN_LEGACY);
 }
 int bw_compressed_data_current(struct bw_compressed_data *p) {

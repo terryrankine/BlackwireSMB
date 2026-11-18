@@ -54,7 +54,7 @@ int main(int argc,char **argv){
     C(argc==8);int folder=!strcmp(argv[1],"folder");uint64_t length=strtoull(argv[5],NULL,10);C(length>65536&&strlen(argv[6])==64);
     measured.mode="none";measured.target="eboot.bin";
     struct smb2_context context={0};C(strlen(argv[2])<sizeof context.root);strcpy(context.root,argv[2]);for(unsigned i=0;i<64;i++)context.handles[i].fd=-1;measured.context=&context;
-    struct bw_source_smb source={.smb=&context,.deadline=now()+600};struct bw_share_config config={0};strcpy(config.server,"192.0.2.1");strcpy(config.share,"FixtureShare");
+    struct bw_source source={.smb=&context,.deadline=now()+600};struct bw_share_config config={0};strcpy(config.server,"192.0.2.1");strcpy(config.share,"FixtureShare");
     struct bw_provider_binding binding;C(!bw_provider_binding_init(&binding,&config,folder?"fixture":"fixture.ffpfsc","PPSA99001",folder?BW_PROVIDER_FOLDER:BW_PROVIDER_CONTAINER));
     C(snprintf(measured.source,sizeof measured.source,"%s/fixture/eboot.bin",argv[2])>0);C(snprintf(measured.game,sizeof measured.game,"%s/games/%s",argv[4],binding.binding.game)>0);C(snprintf(measured.final,sizeof measured.final,"%s/eboot.bin",measured.game)>0);strcpy(measured.parent,measured.game);
     struct bw_container_smb *image=NULL;struct image_source input={.context=&context};

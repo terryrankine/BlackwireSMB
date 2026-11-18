@@ -74,7 +74,7 @@ static void load_image(struct image_source *image,const char *path){FILE *f=fope
 static int hash_copy(void *opaque,const void *bytes,size_t size){C(size<=65536);cp_sha_update(opaque,bytes,size);return 0;}
 int main(int argc,char **argv){C(argc==7);int folder=!strcmp(argv[1],"folder"),valid=atoi(argv[6]);unsigned k1=(unsigned)atoi(argv[4]),k2=(unsigned)atoi(argv[5]);struct smb2_context context={0};
     C(strlen(argv[2])<sizeof context.root);strcpy(context.root,argv[2]);for(unsigned i=0;i<64;i++)context.handles[i].fd=-1;
-    struct bw_source_smb source={.smb=&context,.deadline=now()+600};struct bw_share_config config={0};strcpy(config.server,"192.0.2.1");strcpy(config.share,"FixtureShare");
+    struct bw_source source={.smb=&context,.deadline=now()+600};struct bw_share_config config={0};strcpy(config.server,"192.0.2.1");strcpy(config.share,"FixtureShare");
     struct bw_provider_binding binding;C(!bw_provider_binding_init(&binding,&config,folder?"fixture":"fixture.ffpfsc","PPSA99001",folder?BW_PROVIDER_FOLDER:BW_PROVIDER_CONTAINER));
     struct bw_container_smb *image=NULL;struct image_source input={.context=&context};
     if(!folder){load_image(&input,argv[3]);image=calloc(1,sizeof *image);C(image);strcpy(image->path,"fixture.ffpfsc");image->handle=(struct smb2fh *)image;

@@ -41,7 +41,7 @@ typedef int (*bw_compressed_data_consume_fn)(void *,const void *,size_t);
  */
 struct bw_compressed_data {
     struct bw_container_smb *image;
-    struct bw_source_smb *progress;
+    struct bw_source *progress;
     int (*current)(void *);
     void *current_opaque;
     uint64_t session,local_budget;
@@ -75,9 +75,9 @@ struct bw_compressed_data {
  */
 int bw_compressed_data_prepare(struct bw_compressed_data *,struct bw_container_smb *,
                              const struct bw_source_binding *,uint64_t local_budget,
-                             struct bw_source_smb *,int (*)(void *),void *);
+                             struct bw_source *,int (*)(void *),void *);
 int bw_compressed_data_prepare_policy(struct bw_compressed_data *,struct bw_container_smb *,
-    const struct bw_source_binding *,uint64_t,struct bw_source_smb *,int (*)(void *),void *,enum bw_source_plan_policy);
+    const struct bw_source_binding *,uint64_t,struct bw_source *,int (*)(void *),void *,enum bw_source_plan_policy);
 int bw_compressed_data_current(struct bw_compressed_data *);
 /* Whole LOCAL file only, selected by immutable manifest ID. Synchronous borrowed
  * chunks <=64 KiB. Rehashes the consumed bytes against preparation's digest.

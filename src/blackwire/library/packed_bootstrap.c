@@ -51,7 +51,7 @@ static int snapshot(struct pbb_state *s){
  * this cache's transport cap. Idle external work remains a checked lifetime
  * fact; its actual controller owns the separate job-wide cap. */
 static int meter(struct pbb_state *s){
-    struct bw_source_smb *p=s->request.source;if(!p)return 0;
+    struct bw_source *p=s->request.source;if(!p)return 0;
     if(p->requests<s->request_last||p->content_bytes<s->byte_last)return fail(s,"bootstrap_counter_rewound");
     uint32_t requests=p->requests-s->request_last;uint64_t bytes=p->content_bytes-s->byte_last;
     uint32_t *owned_requests=s->observing?&s->stats.cache_owned_requests:&s->stats.external_requests;
@@ -70,7 +70,7 @@ static int transport_limit(struct pbb_state *s){
     return 0;
 }
 static int guard(void *opaque){
-    struct pbb_state *s=opaque;struct bw_source_smb *p=s->request.source;struct timespec now;
+    struct pbb_state *s=opaque;struct bw_source *p=s->request.source;struct timespec now;
     if(s->owner->failed)return -1;
     if(!p->smb||p->smb!=s->context||p->error||clock_gettime(CLOCK_MONOTONIC,&now))return fail(s,"bootstrap_source_not_owned_current");
     double t=(double)now.tv_sec+(double)now.tv_nsec/1e9;
@@ -95,13 +95,13 @@ static void observe(void *opaque,const struct bw_source_progress *progress){
     s->inside_observer=0;
 }
 static int watch(struct pbb_state *s){
-    struct bw_source_smb *p=s->request.source;
+    struct bw_source *p=s->request.source;
     if(s->observing||p->observe==observe)return fail(s,"bootstrap_nested_source_operation");
     if(meter(s)||transport_limit(s))return -1;
     s->previous=p->observe;s->previous_opaque=p->observe_opaque;s->saved_deadline=p->deadline;s->latched=0;s->observing=1;p->observe=observe;p->observe_opaque=s;return 0;
 }
 static int unwatch(struct pbb_state *s){
-    if(!s->observing)return 0;struct bw_source_smb *p=s->request.source;
+    if(!s->observing)return 0;struct bw_source *p=s->request.source;
     int bad=meter(s)||transport_limit(s);
     if(p->observe!=observe||p->observe_opaque!=s)fail(s,"bootstrap_observer_replaced");
     else{p->observe=s->previous;p->observe_opaque=s->previous_opaque;}
@@ -123,7 +123,7 @@ static int read_range(struct pbb_state *s,const struct bw_pbb_archive *a,uint64_
     if(used>s->request.read_byte_limit-PBB_RESERVE||size>s->request.read_byte_limit-PBB_RESERVE-used)return fail(s,"bootstrap_cumulative_read_budget");
     if(s->stats.range_calls==UINT32_MAX)return fail(s,"bootstrap_range_call_limit");s->stats.range_calls++;
     struct read_work w={.s=s,.buffer=buffer,.size=size,.consume=user,.opaque=opaque,.body=body};cp_sha_init(&w.sha256);pp_sha1_init(&w.sha1);
-    int bad=bw_source_smb_read_range(s->request.source,s->request.snapshot,a->path,offset,size,guard,s,consume,&w);
+    int bad=bw_source_read_range(s->request.source,s->request.snapshot,a->path,offset,size,guard,s,consume,&w);
     if(bad||w.used!=size||guard(s))return fail(s,"bootstrap_range_or_current_refused");cp_sha_final(&w.sha256,sha256);pp_sha1_final(&w.sha1,sha1);return 0;
 }
 static uint8_t *span(struct pbb_state *s,struct bw_pbb_archive *a,enum bw_pbb_span_kind kind,uint64_t offset,uint64_t size){

@@ -52,7 +52,7 @@ t_socket smb2_get_fd(struct smb2_context *s){CHECK(s->pending);return -1;}
 int smb2_which_events(struct smb2_context *s){(void)s;return 0;}
 int smb2_service(struct smb2_context *s,int events){(void)s;(void)events;CHECK(0);return -1;}
 uint32_t smb2_get_max_read_size(struct smb2_context *s){return s->maximum;}
-struct sink {struct smb2_context *context;struct bw_source_smb *source;uint64_t at;size_t size,used,largest;unsigned calls;};
+struct sink {struct smb2_context *context;struct bw_source *source;uint64_t at;size_t size,used,largest;unsigned calls;};
 static int consume(void *opaque,const void *bytes,size_t size){struct sink *p=opaque;CHECK(size&&size<=65536&&size<=p->size-p->used);CHECK(!memcmp(bytes,p->context->bytes+p->at+p->used,size));p->used+=size;p->calls++;if(size>p->largest)p->largest=size;
     if(p->context->action==1)p->context->canceled=1;if(p->context->action==2||p->context->action==8)p->context->changed=1;if(p->context->action==3)return -1;if(p->context->action==4)p->source->deadline=0;return 0;}
 static int current(void *opaque){return ((struct smb2_context *)opaque)->canceled;}
@@ -65,7 +65,7 @@ int main(void){
     for(unsigned mode=0;mode<2;mode++)for(unsigned action=0;action<=14;action++){
         struct smb2_context context={.bytes=bytes,.size=size,.maximum=1024u*1024u,.action=action};
         if(action==9)context.maximum=262144;if(action==10)context.maximum=65536;if(action==11)context.short_reply=8191;if(action==12)context.maximum=0;
-        struct bw_source_smb source={.smb=&context,.deadline=now()+30};uint64_t at=mode?17:0;size_t wanted=mode?size-31:size;struct sink sink={&context,&source,at,wanted,0,0,0};
+        struct bw_source source={.smb=&context,.deadline=now()+30};uint64_t at=mode?17:0;size_t wanted=mode?size-31:size;struct sink sink={&context,&source,at,wanted,0,0,0};
         int result=mode?bw_source_smb_read_range(&source,&snapshot,"eboot.bin",at,wanted,current,&context,consume,&sink):bw_source_smb_read(&source,&snapshot,"eboot.bin",consume,&sink);
         int success=action==0||action==9||action==10||action==11||action==13||(!mode&&action==1);
         if(success){CHECK(!result&&sink.used==wanted&&source.content_bytes==wanted);uint32_t piece=action==13?65536:context.short_reply?context.short_reply:context.maximum;
@@ -75,7 +75,7 @@ int main(void){
         else{CHECK(result<0&&source.error);if(action==1||action==3||action==4)CHECK(sink.calls==1);if(action==5)CHECK(context.destroyed==1&&!context.pending&&!source.smb);if(action==6||action==7||action==12||action==14)CHECK(!sink.calls);if(action==14)CHECK(context.destroyed==1&&!source.smb);}
         CHECK(!context.opened);cases++;
     }
-    struct smb2_context context={.bytes=bytes,.size=size,.maximum=1024u*1024u};struct bw_source_smb source={.smb=&context,.deadline=now()+30};struct sink sink={&context,&source,size,0,0,0,0};
+    struct smb2_context context={.bytes=bytes,.size=size,.maximum=1024u*1024u};struct bw_source source={.smb=&context,.deadline=now()+30};struct sink sink={&context,&source,size,0,0,0,0};
     CHECK(!bw_source_smb_read_range(&source,&snapshot,"eboot.bin",size,0,current,&context,consume,&sink));CHECK(!context.reads&&!sink.calls&&!context.opened);
     printf("{\"passed\":true,\"checks\":%u,\"cases\":%u,\"wholeFileBytes\":%zu,\"batchedReadCalls\":%u,\"sixtyFourKiBReadCalls\":%u,\"maxConsumerBytes\":65536,\"modeledTransportOnly\":true}\n",checks,cases+1,size,full_reads,small_reads);
     bw_source_snapshot_destroy(&snapshot);free(bytes);return 0;

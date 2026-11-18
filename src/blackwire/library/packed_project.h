@@ -16,7 +16,7 @@ struct bw_pp_request {
      * The required callback is a pure current-job/cancel guard, zero=current.
      * Caller separately checks whole-provider generation/lifetime. These tags
      * REFUSE unsupported inputs; they do not establish native ownership. */
-    struct bw_source_smb *source;
+    struct bw_source *source;
     const struct bw_source_snapshot *snapshot;
     bw_source_range_current_fn current;
     void *job;

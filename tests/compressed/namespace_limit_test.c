@@ -24,7 +24,7 @@ static int error(struct state *p){return p->scan.error;}
 static void seal(struct state *p){struct bw_source_map map={0};C(!bw_source_plan_finish(&p->plan,&map));struct bw_manifest manifest;C(!bw_manifest_open(&manifest,map.bytes,map.size));C(manifest.count==p->scan.count&&manifest.path_bytes==p->scan.path_bytes);bw_source_map_destroy(&map);}
 static void clear(struct state *p){bw_source_plan_destroy(&p->plan);free(p->owner.image);}
 #else
-struct state {struct bw_source_smb source;struct logical_metadata scan;};
+struct state {struct bw_source source;struct logical_metadata scan;};
 static void init(struct state *p){memset(p,0,sizeof *p);canceled=0;struct timespec t;C(!clock_gettime(CLOCK_MONOTONIC,&t));p->source.smb=(struct smb2_context *)p;p->source.deadline=t.tv_sec+t.tv_nsec/1e9+120;p->scan.source=&p->source;}
 static int invoke(struct state *p,const char *path,unsigned flags){struct bw_pfs_inode n={.id=1,.logical_size=1,.flags=flags};if(canceled)p->source.deadline=0;return logical(&p->scan,path,&n);}
 static uint32_t files(struct state *p){return p->scan.files;}

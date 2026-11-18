@@ -73,7 +73,7 @@ int bw_source_provider_current(struct bw_source_provider *p) {
     p->busy=1;int result=view_current(p);p->busy=0;return result;
 }
 int bw_source_provider_prepare_policy(struct bw_source_provider *p,const struct bw_provider_binding *identity,
-    struct bw_source_smb *source,struct bw_container_smb *image,const char *run,uint64_t budget,
+    struct bw_source *source,struct bw_container_smb *image,const char *run,uint64_t budget,
     int (*current)(void *),void *opaque,enum bw_source_plan_policy policy) {
     if (!p || p->source || p->busy || p->failed || !identity || !source || !current || !run || bw_generation_run(run) ||
         identity->policy!=BW_PROVIDER_POLICY_V1 || !budget || budget>BW_PROVIDER_MAX_LOCAL_BYTES ||
@@ -128,7 +128,7 @@ done:
     return 0;
 }
 int bw_source_provider_prepare(struct bw_source_provider *p,const struct bw_provider_binding *identity,
-    struct bw_source_smb *source,struct bw_container_smb *image,const char *run,uint64_t budget,int (*current)(void *),void *opaque){
+    struct bw_source *source,struct bw_container_smb *image,const char *run,uint64_t budget,int (*current)(void *),void *opaque){
     return bw_source_provider_prepare_policy(p,identity,source,image,run,budget,current,opaque,BW_SOURCE_PLAN_LEGACY);
 }
 struct consuming {struct bw_source_provider *provider;bw_source_consume_fn consume;void *opaque;};
@@ -148,7 +148,7 @@ int bw_source_provider_read(struct bw_source_provider *p,const char *path,bw_sou
     }
     if (id==UINT32_MAX) goto done;
     if (p->identity.kind==BW_PROVIDER_FOLDER)
-        result=bw_source_smb_read(p->source,&p->folder.snapshot,path,consume,&consumed);
+        result=bw_source_read(p->source,&p->folder.snapshot,path,consume,&consumed);
     else result=bw_compressed_data_copy_local(&p->container,id,consume,&consumed);
     if (!result) result=guard(p);
 done:

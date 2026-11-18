@@ -14,7 +14,7 @@ struct dl_state {
     struct bw_derived_local_stats stats;
     struct bw_derived_plan_view captured,visible;
     struct bw_pp_plan recipe;
-    struct bw_source_smb *source;
+    struct bw_source *source;
     struct smb2_context *connection;
     double deadline,last_now;
 };
@@ -154,7 +154,7 @@ int bw_derived_local_read(struct bw_derived_local *p,uint32_t id,bw_source_consu
     const struct bw_derived_origin *o=s->captured.origins+id;
     if(o->kind==BW_DERIVED_ORIGINAL)bad=original(p,r.path,&reader);
     else {const struct bw_pp_span *body=&s->recipe.spans[BW_PP_BODY];
-        bad=bw_source_smb_read_range(s->source,&s->request.original->folder.snapshot,s->recipe.archive,body->offset,body->size,current,p,consume,&reader);}
+        bad=bw_source_read_range(s->source,&s->request.original->folder.snapshot,s->recipe.archive,body->offset,body->size,current,p,consume,&reader);}
     if(bad||p->failed||reader.size!=r.size){fail(p,"derived_local_body_incomplete");bad=1;goto done;}
     uint8_t actual[32];cp_sha_final(&reader.hash,actual);
     if(memcmp(actual,s->captured.digests+56u+32u*id,32)||full(p)||current(p)){fail(p,"derived_local_digest_or_terminal_validation_refused");bad=1;goto done;}

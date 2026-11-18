@@ -8,7 +8,7 @@
 #include "source_namespace.h"
 struct np_context {
     struct cp_plan *plan;
-    struct bw_source_smb *source;
+    struct bw_source *source;
     const struct bw_provider_bundle *bundle;
     struct bw_source_provider *provider;
     int (*selection_current)(void *);

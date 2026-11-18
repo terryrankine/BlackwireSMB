@@ -27,7 +27,7 @@ struct bw_reader_preflight {
     const char *data_root;
     const struct bw_share_config *connection;
     const struct bw_reader_selection *selected;
-    struct bw_source_smb *source;
+    struct bw_source *source;
     int (*current)(void *);
     void *opaque;
     const char **error;

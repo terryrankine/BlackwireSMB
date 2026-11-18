@@ -267,7 +267,7 @@ static int na_original_row(struct bw_native_launch_admission *p,uint32_t physica
         if(!strcmp(source.path,target.path)){*original=i;*row=source;return 0;}}
     return -1;
 }
-static int na_container_source(struct bw_native_launch_admission *p,struct bw_source_smb *source){
+static int na_container_source(struct bw_native_launch_admission *p,struct bw_source *source){
     struct bw_container_smb *image=calloc(1,sizeof *image);
     struct bw_container_manifest files={0};int result=-1;uint8_t generation[32];
     const struct bw_manifest *original=p->companions?&p->companions->original_manifest:&p->manifest;
@@ -283,7 +283,7 @@ done:
     return result;
 }
 int bw_native_launch_admission_source(struct bw_native_launch_admission *p,const struct bw_share_config *connection,
-    struct bw_source_smb *source,const struct bw_reader_selection *selected,uint8_t map_sha[32],uint8_t generation[32],const char **error){
+    struct bw_source *source,const struct bw_reader_selection *selected,uint8_t map_sha[32],uint8_t generation[32],const char **error){
     const char *failure="The selected PC source or required startup metadata changed; choose Send to revalidate it.";
     if(error)*error=failure;struct bw_provider_binding identity;int result=-1;void *param=NULL;size_t size=0;
     if(!p||p->purpose!=BW_SOURCE_AMPR_EXECUTION||!connection||!source||!source->smb||!map_sha||!generation||source->error||
@@ -299,13 +299,13 @@ int bw_native_launch_admission_source(struct bw_native_launch_admission *p,const
         int n=snprintf(path,sizeof path,"%s/%s",p->identity.binding.source,row.path);if(n<0||(size_t)n>=sizeof path||na_guard(p))goto done;
         int rc;
         if(!strcmp(row.path,"sce_sys/param.json")){
-            rc=bw_source_smb_small_file(source,path,BW_SOURCE_PARAM_LIMIT,&param,&size,&info);
+            rc=bw_source_small_file(source,path,BW_SOURCE_PARAM_LIMIT,&param,&size,&info);
             if(rc!=BW_SOURCE_FOUND||size!=row.size)goto done;
             char title[10];uint8_t hash[32];cp_sha_bytes(param,size,hash);
             const uint8_t *digests=p->companions?p->companions->original_digests:p->digests;
             if(bw_source_param_title(param,size,title)||strcmp(title,p->identity.binding.title)||memcmp(hash,digests+56u+32u*original,32))goto done;
             free(param);param=NULL;
-        }else rc=bw_source_smb_file_info(source,path,&info);
+        }else rc=bw_source_file_info(source,path,&info);
         if(rc!=BW_SOURCE_FOUND||info.size!=row.size||bw_source_unix_mtime(info.mtime_ticks)!=row.mtime_sec||na_guard(p))goto done;
     }
     if(na_current(p))goto done;
@@ -388,7 +388,7 @@ int bw_native_launch_admission_source_connect(struct bw_native_launch_admission 
     if(error)*error=failure;
     if(!p||p->purpose!=BW_SOURCE_AMPR_EXECUTION||!configured||!selected||!__builtin_isfinite(deadline)||deadline>p->deadline||deadline<=cp_now()||na_current(p))return -1;
     struct bw_share_config connection=*configured;struct bw_provider_binding identity={0};
-    struct bw_source_smb source={.deadline=deadline};uint8_t map[32],generation[32];int result=-1;
+    struct bw_source source={.deadline=deadline};uint8_t map[32],generation[32];int result=-1;
     if(bw_provider_binding_select(&identity,&connection,p->identity.binding.source,p->identity.binding.title,p->identity.kind,p->identity.binding.game)||
        !na_bound(&p->identity,&identity)||na_selected(p,selected)||na_current(p))goto done;
     double remaining=deadline-cp_now();if(remaining<=0)goto done;

@@ -18,7 +18,7 @@
 struct smb2fh { int fd; };
 struct smb2_context { struct smb2fh *handle; };
 static const char *fixture,*mode;
-static struct bw_source_smb *source;
+static struct bw_source *source;
 static unsigned checks,stats,heldstats,reads,opens,closes,destroys;
 #define C(x) do { checks++;if(!(x)){fprintf(stderr,"catalog failure line %d: %s\n",__LINE__,#x);exit(1);} } while(0)
 static void metadata(const struct stat *s,struct smb2_stat_64 *v){
@@ -79,18 +79,18 @@ int smb2_pread(struct smb2_context *c,struct smb2fh *h,uint8_t *bytes,uint32_t s
  if(!strcmp(mode,"short-read")&&size>1)size/=2;
  ssize_t n=pread(h->fd,bytes,size,(off_t)at);return n<0?-errno:(int)n;
 }
-int bw_source_smb_list(struct bw_source_smb *s,const char *path,bw_source_visit_fn visit,void *opaque){
+int bw_source_smb_list(struct bw_source *s,const char *path,bw_source_visit_fn visit,void *opaque){
  C(s==source&&s->smb&&!path[0]);struct stat st;C(!stat(fixture,&st));struct smb2_stat_64 meta;metadata(&st,&meta);
  struct bw_source_info info={.size=meta.smb2_size,.inode=meta.smb2_ino,
  .mtime_ticks=UINT64_C(116444736000000000)+meta.smb2_mtime*10000000u+meta.smb2_mtime_nsec/100,
  .ctime_ticks=UINT64_C(116444736000000000)+meta.smb2_ctime*10000000u+meta.smb2_ctime_nsec/100};
  return visit(opaque,"Neutral.ffpfsc",&info);
 }
-int bw_source_smb_file_info(struct bw_source_smb *s,const char *path,struct bw_source_info *out){(void)s;(void)path;(void)out;C(0);return -1;}
-int bw_source_smb_small_file(struct bw_source_smb *s,const char *p,size_t n,void **b,size_t *z,struct bw_source_info *i){(void)s;(void)p;(void)n;(void)b;(void)z;(void)i;C(0);return -1;}
+int bw_source_smb_file_info(struct bw_source *s,const char *path,struct bw_source_info *out){(void)s;(void)path;(void)out;C(0);return -1;}
+int bw_source_smb_small_file(struct bw_source *s,const char *p,size_t n,void **b,size_t *z,struct bw_source_info *i){(void)s;(void)p;(void)n;(void)b;(void)z;(void)i;C(0);return -1;}
 int main(int argc,char **argv){
  C(argc==3);fixture=argv[1];mode=argv[2];struct timespec now;C(!clock_gettime(CLOCK_MONOTONIC,&now));
- struct bw_source_smb s={.deadline=now.tv_sec+now.tv_nsec/1e9+120};source=&s;s.smb=calloc(1,sizeof *s.smb);C(s.smb);
+ struct bw_source s={.deadline=now.tv_sec+now.tv_nsec/1e9+120};source=&s;s.smb=calloc(1,sizeof *s.smb);C(s.smb);
  struct bw_source_catalog catalog={0};int result=bw_source_catalog_scan(&s,&catalog);
  int owner_present=s.smb!=NULL;const char *reason=catalog.error?catalog.error:"none";
  C(catalog.count==1);int container_result=catalog.items[0].container_error;

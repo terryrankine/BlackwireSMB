@@ -40,7 +40,7 @@ struct bs_operation {
     mode_t root_mode;
 };
 struct bs_seed;
-struct bpo_context {struct cp_plan *plan;struct bw_source_smb *source;const struct bw_batch_facts *facts;struct bs_operation *operation;struct bs_seed *seed;};
+struct bpo_context {struct cp_plan *plan;struct bw_source *source;const struct bw_batch_facts *facts;struct bs_operation *operation;struct bs_seed *seed;};
 static struct bpo_context *bpo_active;
 static int bs_current(void *);
 static int cp_refresh(const struct cp_plan *p){return !bpo_active||bpo_active->plan!=p||!cp_alive(p)||bs_current(bpo_active->operation)?-1:0;}

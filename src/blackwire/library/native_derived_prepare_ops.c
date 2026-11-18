@@ -4,7 +4,7 @@
 #include "../streamreader/prepare_copy.c"
 #include "native_derived_send.h"
 struct dpo_context {
- struct cp_plan *plan;struct bw_source_smb *source;
+ struct cp_plan *plan;struct bw_source *source;
  struct bw_source_provider *provider;struct bw_packed_project *project;
  struct bw_derived_local *local;struct bw_derived_material *material;
  const struct bw_derived_plan_view *view;

@@ -22,7 +22,7 @@ struct bw_provider_bundle {
 struct bw_source_provider {
     struct bw_provider_binding identity;
     struct bw_provider_bundle bundle;
-    struct bw_source_smb *source;
+    struct bw_source *source;
     struct bw_source_preparation folder;
     struct bw_compressed_data container;
     struct bw_container_ops image_ops;
@@ -56,13 +56,13 @@ struct bw_source_provider {
  * typed live provider and the current selected job.
  */
 int bw_source_provider_prepare(struct bw_source_provider *,const struct bw_provider_binding *,
-    struct bw_source_smb *,struct bw_container_smb *,const char *run,uint64_t budget,
+    struct bw_source *,struct bw_container_smb *,const char *run,uint64_t budget,
     int (*current)(void *),void *);
 /* New projection-source planning only. COMPANIONS_V1 reads/hashes all admitted
  * files in both source companion directories locally; it must not be handed
  * to legacy Send/reader policy as if its classification were an old receipt. */
 int bw_source_provider_prepare_policy(struct bw_source_provider *,const struct bw_provider_binding *,
-    struct bw_source_smb *,struct bw_container_smb *,const char *,uint64_t,int (*)(void *),void *,enum bw_source_plan_policy);
+    struct bw_source *,struct bw_container_smb *,const char *,uint64_t,int (*)(void *),void *,enum bw_source_plan_policy);
 int bw_source_provider_current(struct bw_source_provider *);
 int bw_source_provider_read(struct bw_source_provider *,const char *,bw_source_consume_fn,void *);
 void bw_source_provider_destroy(struct bw_source_provider *);

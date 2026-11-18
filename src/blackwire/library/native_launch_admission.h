@@ -71,7 +71,7 @@ int bw_native_launch_admission_current_for_removal(struct bw_native_launch_admis
  * Durable generation is the Send seal, not a freshly reconstructed tree seal.
  * Unchanged early-reader per-request size/mtime + held/named fences remain. */
 int bw_native_launch_admission_source(struct bw_native_launch_admission *,
-    const struct bw_share_config *,struct bw_source_smb *,const struct bw_reader_selection *,
+    const struct bw_share_config *,struct bw_source *,const struct bw_reader_selection *,
     uint8_t map_sha256[32],uint8_t generation_sha256[32],const char **error);
 /* Read-only pinned full map digest from this held current receipt. This is
  * local identity evidence only; source() remains mandatory before handoff. */

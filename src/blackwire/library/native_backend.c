@@ -192,7 +192,7 @@ static int metadata_matches(const struct bw_source_info *a,const struct bw_sourc
 struct preparation_lease {
     struct bw_native_backend *owner;const struct bw_native_prepare_selection *accepted;
     const struct bw_native_job_token *token;struct bw_native_prepare_selection captured;
-    struct bw_source_smb *source;struct bw_native_jobs *jobs;uint64_t generation;uint32_t revision;int worker_kind;
+    struct bw_source *source;struct bw_native_jobs *jobs;uint64_t generation;uint32_t revision;int worker_kind;
 };
 /* Called synchronously inside DATA callbacks. No settings, source/provider,
  * jobs snapshots, progress, filesystem or SDK calls are allowed here. */
@@ -208,7 +208,7 @@ static int preparation_data_current(void *opaque){
         lease->source->content_bytes>BW_PROVIDER_MAX_LOCAL_BYTES*3u+UINT64_C(268435456)||lease->source->requests>524288u?-1:0;
 }
 static int preparation_lease_open(struct preparation_lease *lease,struct bw_native_backend *p,
-    const struct bw_native_prepare_selection *selection,struct bw_source_smb *source,int (*outer)(void *),void *observer){
+    const struct bw_native_prepare_selection *selection,struct bw_source *source,int (*outer)(void *),void *observer){
     if(!p||!selection||!source||(outer!=prepare_current&&outer!=start_prepare_current))return -1;
     pthread_mutex_lock(&p->lock);
     const struct bw_native_job_token *token=p->worker_kind==WORK_PREPARE?&p->sending.token:&p->playing.prepare_token;
@@ -253,7 +253,7 @@ static int preparation_upgrade_unmapped(void *opaque,const char *root,const char
     return bw_startup_runtime_unmapped(&upgrade->control,root,title);
 }
 static int prepare(void *opaque,struct bw_share_config *config,const struct bw_native_prepare_selection *selection,int (*current)(void *),void *guard,bw_source_observer_fn observe,void *observer,struct bw_native_prepared *out){
-    (void)opaque;int result=BW_SEND_FAILED;struct bw_source_smb source={.deadline=now()+1800,.observe=observe,.observe_opaque=observer};
+    (void)opaque;int result=BW_SEND_FAILED;struct bw_source source={.deadline=now()+1800,.observe=observe,.observe_opaque=observer};
     struct bw_source_provider provider={0};struct bw_container_smb *image=NULL;struct preparation_lease lease={0};struct bw_native_derived_context derived={0};
     struct bw_native_batch_context batch={0};
     struct preparation_upgrade upgrade={.lease=&lease,.provider=&provider};
@@ -794,7 +794,7 @@ static void check_failure_message(struct bw_native_backend *p,const struct bw_na
         *failure->source?".":"");
 }
 static int discover_one(void *opaque,struct bw_share_config *share,struct bw_native_library *out,size_t cover_limit){
-    (void)opaque;struct bw_source_smb source={0};double start=now();if(start<0)return -1;source.deadline=start+180;
+    (void)opaque;struct bw_source source={0};double start=now();if(start<0)return -1;source.deadline=start+180;
     const char *stage="smb-connect";
     char share_name[128];memcpy(share_name,share->share,sizeof share_name);
     struct bw_tp_status connect;int result=bw_source_connect_smb(share,BW_TP_PROFILE_SCAN,10,&source.smb,&connect);
@@ -816,7 +816,7 @@ static int discover_one(void *opaque,struct bw_share_config *share,struct bw_nat
         if(!item->cover||!item->icon.size||item->icon.size>cover_limit-out->cover_bytes)continue;
         char path[1280];int n=snprintf(path,sizeof path,"%s/sce_sys/icon0.png",item->source);if(n<0||(size_t)n>=sizeof path){result=-1;break;}
         void *bytes=NULL;size_t size=0;struct bw_source_info info;
-        int found=bw_source_smb_small_file(&source,path,BW_SOURCE_SMALL_FILE_LIMIT,&bytes,&size,&info);
+        int found=bw_source_small_file(&source,path,BW_SOURCE_SMALL_FILE_LIMIT,&bytes,&size,&info);
         if(found<0){free(bytes);result=-1;break;}
         if(!found&&size==item->icon.size&&same_info(&info,&item->icon)){
             out->covers[i]=(struct bw_native_cover){bytes,size};out->cover_bytes+=size;bytes=NULL;

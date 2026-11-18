@@ -29,7 +29,7 @@ static int reg_uninstall(void *opaque,const char title[10]){struct reg_fixture *
     return !strcmp(f->mode,"lost-uninstall")?-1:0;}
 int main(int argc,char **argv){C(argc==6&&!strcmp(argv[1],"folder"));const char *mode=argv[5];
     struct smb2_context context={0};C(strlen(argv[2])<sizeof context.root);strcpy(context.root,argv[2]);for(unsigned i=0;i<64;i++)context.handles[i].fd=-1;
-    struct bw_source_smb source={.smb=&context,.deadline=now()+600};struct bw_share_config config={0};strcpy(config.server,"192.0.2.1");strcpy(config.share,"FixtureShare");struct bw_provider_binding identity;
+    struct bw_source source={.smb=&context,.deadline=now()+600};struct bw_share_config config={0};strcpy(config.server,"192.0.2.1");strcpy(config.share,"FixtureShare");struct bw_provider_binding identity;
     C(!bw_provider_binding_init(&identity,&config,"fixture","PPSA99001",BW_PROVIDER_FOLDER));
     char data[1600],log[1600],state[1800],path[2000];struct reg_fixture f={.context=&context,.mode=mode,.manual=1};
     snprintf(data,sizeof data,"%s/data",argv[4]);C(!mkdir(data,0755));snprintf(f.apps,sizeof f.apps,"%s/apps",argv[4]);C(!mkdir(f.apps,0770));snprintf(f.db,sizeof f.db,"%s/app.db",argv[4]);empty_db(f.db);

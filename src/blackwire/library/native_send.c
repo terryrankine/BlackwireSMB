@@ -231,7 +231,7 @@ int bw_native_send_files(const struct bw_native_send_files *request,struct bw_na
     if(pthread_mutex_trylock(&ns_mutex))return BW_SEND_BUSY;
     cp_idle_guard=request->idle;cp_idle_opaque=request->opaque;
     int outcome=BW_SEND_FAILED,lock=-1,scope=-1,games=-1,root=-1,created=0,published=0,observed=0;char state_path[2048],scope_path[2048];
-    struct bw_source_smb *source=request->provider->source;
+    struct bw_source *source=request->provider->source;
     const struct bw_provider_binding *identity=&request->provider->identity;
     const struct bw_source_binding *binding=&identity->binding;
     const struct bw_provider_bundle *original_bundle=&request->provider->bundle,*bundle=original_bundle;

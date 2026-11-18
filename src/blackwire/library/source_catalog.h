@@ -58,11 +58,11 @@ struct bw_source_catalog {
  * Container extensions are discovery hints only, not format/title validation.
  * Partial/failed results must be discarded by the caller. No preparation,
  * registration, game launch, source writes or console writes. */
-int bw_source_catalog_scan(struct bw_source_smb *,struct bw_source_catalog *);
+int bw_source_catalog_scan(struct bw_source *,struct bw_source_catalog *);
 /* Read only the bounded icon from the exact admitted image generation. No
  * extraction or fabricated folder SMB metadata. The caller owns the result.
  * Positive means absent/over budget; -1 discards partial bytes on any failure. */
-int bw_source_catalog_container_cover(struct bw_source_smb *,const struct bw_catalog_item *,size_t,void **,size_t *);
+int bw_source_catalog_container_cover(struct bw_source *,const struct bw_catalog_item *,size_t,void **,size_t *);
 void bw_source_catalog_destroy(struct bw_source_catalog *);
 int bw_source_catalog_json(const struct bw_source_catalog *,char **,size_t *);
 int bw_source_catalog_image_same(const struct bw_stat *,const struct bw_stat *);

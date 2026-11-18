@@ -14,6 +14,7 @@ LIB, STREAM = SRC / 'library', SRC / 'streamreader'
 UNITS = {
     'tp_error': (HERE / 'tp_error_test.c', [], []),
     'connect': (HERE / 'connect_test.c', [], []),
+    'source_ops': (HERE / 'source_ops_test.c', [], []),
     'container': (HERE / 'container_test.c', [STREAM / n for n in (
         'container_smb.c', 'container_source.c', 'pfs_source.c', 'pfsc_range.c', 'pfsc_inflate.c', 'manifest.c')], []),
 }
