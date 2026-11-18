@@ -122,7 +122,7 @@ The Payload Manager entry stores one **`Blackwire.elf`**; use its normal upload/
 2. Refresh the source and select the single **Blackwire** entry, version **v0.3.0-beta.3**. Install/upload it as **`Blackwire.elf`**.
 3. Close the running game normally, let pending operations finish, and stop the previous Blackwire resident in **Active processes** before loading the replacement. Deleting a stored ELF does not stop an already running resident. Keep one resident and one canonical payload entry.
 4. Start your working jailbreak/Kstuff/ShadowMountPlus environment, then load the stored **`Blackwire.elf`** card once. Confirm `http://<PS5-address>:5918/health` reports **`blackwire-v0.3.0-beta.3`**.
-5. Allow automatic Media setup to finish. Open **Blackwire** from PS5 Media, or use `http://<PS5-address>:5918/` in a LAN browser. The Media shortcut opens the running resident; it cannot load a missing ELF. Load the ELF again after reboot.
+5. Allow automatic Media setup to finish. Open **Blackwire** from PS5 Media, or use `http://<PS5-address>:5918/` (the PS5's IPv4 address) in a LAN browser. The Media shortcut opens the running resident; it cannot load a missing ELF. Load the ELF again after reboot.
 
 The direct [release download](https://github.com/XXD3V3L0P3RXX/BlackwireSMB/releases/tag/v0.3.0-beta.3) contains the same ELF and SHA-256 as the custom catalog. Dependencies are supplied separately. [Clean-reinstall instructions](docs/SETUP.md#deliberate-clean-reinstall-for-a-controlled-test) explain how to remove owned preparations without deleting original PC games, saves or unrelated applications. A clean reset is optional, not a required workaround for every error.
 

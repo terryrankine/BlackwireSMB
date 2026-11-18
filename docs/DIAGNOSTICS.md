@@ -23,7 +23,7 @@ This optional test build investigates missing compressed candidates and the repo
    ```
 
    Keep any existing `.vhash` companions with their images. Do not move or replace files while they are being compressed, scanned, prepared or read by a running game.
-5. Open `http://<PS5-address>:5918/`, choose **Refresh library**, and note how many images are present versus how many games appear. For a visible affected game, choose **Send files** once, or **Finish setup** if its startup files were already kept.
+5. Open `http://<PS5-address>:5918/` (the PS5's IPv4 address), choose **Refresh library**, and note how many images are present versus how many games appear. For a visible affected game, choose **Send files** once, or **Finish setup** if its startup files were already kept.
 6. Wait for **Ready** or a failure. Record the exact message and approximate time. If an action is unavailable or fails, collect the evidence before uninstalling, restoring, deleting preparation records or repeatedly trying again. Those changes can erase the useful failure state.
 
 There is no requirement to erase your library or reinstall games for this diagnostic.
