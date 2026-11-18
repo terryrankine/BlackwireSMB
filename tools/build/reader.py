@@ -216,6 +216,10 @@ def host_tests(root, out, source, runner):
     runner.run(["python3", root / "tests/home/check_projected_handoff.py", "--root", root,
                 "--output", checked], "host-projected_handoff")
     results["projected_handoff"] = json.loads((checked / "projected-handoff/proof.json").read_text())
+    checked = out / "home-main"
+    runner.run(["python3", root / "tests/home/check_main.py", "--root", root,
+                "--output", checked], "host-home-main")
+    results["home_main"] = json.loads((checked / "main/proof.json").read_text())
     checked = out / "prepare-source-policy"
     runner.run(["python3", root / "tests/dashboard/lifecycle/check_prepare_source_policy.py",
                 "--host-only", "--output", checked], "host-prepare-source-policy")

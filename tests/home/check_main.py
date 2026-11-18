@@ -11,6 +11,7 @@ prefix='''#define BW_HOME_STARTUP 1
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -22,8 +23,11 @@ prefix='''#define BW_HOME_STARTUP 1
 struct bd_resident;static struct bw_native_backend *native_backend;static struct bd_resident *dashboard;
 static const unsigned char page_html[]={1},brand_logo_png[]={2};static const size_t page_html_size=1,brand_logo_png_size=1;
 int bd_resident_handle(struct bd_resident*,const char*,const char*,const void*,size_t,const char*,struct bw_native_response*);
+#define PORT 5918
+static void log_line(const char *line){(void)line;}
+static int health_document(char *out,size_t capacity){return snprintf(out,capacity,"{}");}
 '''
-header.write_text(prefix+'\n'.join(function(raw,n) for n in ['static int write_full(','static void send_bytes(','static void send_text(','static int read_request(','static int native_header(','static int native_reader_peer(','static void serve(']))
+header.write_text(prefix+'\n'.join(function(raw,n) for n in ['static int write_full(','static double http_now(','static double http_deadline(','static int http_wait(','static int http_write(','static void send_bytes(','static void send_text(','static int read_request(','static int native_header(','static int http_host_allowed(','static int http_request_refusal(','static int native_reader_peer(','static void serve(']))
 cmd=['clang-18','-D_DEFAULT_SOURCE=1','-std=c11','-O1','-g','-Wall','-Wextra','-Werror','-Wno-misleading-indentation','-Wno-unused-function','-fsanitize=address,undefined','-fno-omit-frame-pointer','-I'+str(O),'-I'+str(S/'library'),'-I'+str(B/'vendor/libsmb2/include'),str(R/'main_peer_test.c'),'-o',str(O/'main_test')]
 p=subprocess.run(cmd,capture_output=True,text=True);(O/'compile.log').write_text(p.stdout+p.stderr);print(p.stdout+p.stderr);p.check_returncode()
 p=subprocess.run([str(O/'main_test')],capture_output=True,text=True);(O/'test.log').write_text(p.stdout+p.stderr);print(p.stdout+p.stderr);p.check_returncode()

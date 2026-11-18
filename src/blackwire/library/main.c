@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <stdint.h>
 #ifndef BW_LIBRARY_HOST_TEST
 #include <ps5/kernel.h>
@@ -610,15 +611,42 @@ static int media_public_handle(const char *method,const char *url,const void *bo
 
 #endif
 
-static void send_bytes(int fd, int code, const char *status, const char *type, const void *data, size_t len) {
-  char hdr[256];
-  int n = snprintf(hdr, sizeof hdr,
-                   "HTTP/1.0 %d %s\r\nContent-Type: %s\r\nContent-Length: %llu\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n",
-                   code, status, type, (unsigned long long)len);
+/* SO_RCVTIMEO/SO_SNDTIMEO bound one call only. A peer that drips one byte per
+ * call could otherwise hold this single-threaded listener indefinitely, so a
+ * request read and a response write each also get one total budget. */
+static double http_now(void){struct timespec t;return clock_gettime(CLOCK_MONOTONIC,&t)?-1:(double)t.tv_sec+(double)t.tv_nsec/1e9;}
+static double http_deadline(void){double now=http_now();return now<0?-1:now+5.0;}
+static int http_wait(int fd,short events,double deadline){
+  for(;;){
+    double now=http_now();if(now<0||now>=deadline)return -1;
+    struct pollfd p={.fd=fd,.events=events};int rc=poll(&p,1,(int)((deadline-now)*1000.0)+1);
+    if(rc<0&&errno==EINTR)continue;if(rc<0||p.revents&POLLNVAL)return -1;if(rc>0)return 0;
+  }
+}
+static int http_write(int fd,const void *data,size_t len,double deadline){
+  const char *p=data;size_t off=0;
+  while(off<len){
+    if(http_wait(fd,POLLOUT,deadline))return -1;
+    /* Writable promises only the send low-water mark. Short writes keep one
+     * blocking call near that space; SO_SNDTIMEO remains the backstop. */
+    size_t chunk=len-off<2048?len-off:2048;ssize_t n=write(fd,p+off,chunk);
+    if(n<0&&errno==EINTR)continue;if(n<=0)return -1;off+=(size_t)n;
+  }return 0;
+}
 
-  if (n < 0 || (size_t)n >= sizeof hdr) return;
-  write_full(fd, hdr, (size_t)n);
-  write_full(fd, data, len);
+static void send_bytes(int fd, int code, const char *status, const char *type, const void *data, size_t len) {
+  char hdr[512];
+  /* Framing headers stop clickjacking of the action controls. The page relies
+   * on inline script and style, so no script-src policy is set here. */
+  int n = snprintf(hdr, sizeof hdr,
+                   "HTTP/1.0 %d %s\r\nContent-Type: %s\r\nContent-Length: %llu\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n"
+                   "X-Frame-Options: DENY\r\nContent-Security-Policy: frame-ancestors 'none'\r\nReferrer-Policy: no-referrer\r\nConnection: close\r\n\r\n",
+                   code, status, type, (unsigned long long)len);
+  double deadline = http_deadline();
+
+  if (n < 0 || (size_t)n >= sizeof hdr || deadline < 0) return;
+  if (http_write(fd, hdr, (size_t)n, deadline)) return;
+  http_write(fd, data, len, deadline);
 }
 
 static void send_text(int fd, int code, const char *status, const char *type, const char *text) {
@@ -685,11 +713,12 @@ static void proxy(int client, const char *host, const char *method, const char *
 }
 #endif
 
-static int read_request(int fd, char *buf, size_t cap) {
+static int read_request(int fd, char *buf, size_t cap, double deadline) {
   size_t n = 0;
   size_t wanted = 0;
 
   while (n + 1 < cap) {
+    if (http_wait(fd, POLLIN, deadline)) break;
     ssize_t got = read(fd, buf + n, cap - 1 - n);
     if (got <= 0) {
       break;
@@ -730,7 +759,6 @@ static int read_request(int fd, char *buf, size_t cap) {
   buf[n] = 0;
   return -1;
 }
-#ifdef BW_NATIVE_BACKEND
 static int native_header(const char *request,const char *key,char *out,size_t capacity){
   const char *end=strstr(request,"\r\n\r\n"),*line=strstr(request,"\r\n");int found=0;
   if(!end||!line)return -1;
@@ -742,7 +770,25 @@ static int native_header(const char *request,const char *key,char *out,size_t ca
     }line=next;
   }return found;
 }
-#endif
+/* DNS rebinding: a hostile page reaches this listener under its own name.
+ * Serve only loopback names and literal IPv4 addresses on this port. */
+static int http_host_allowed(const char *host){
+  char port[8],literal[16];struct in_addr address;const char *colon=strchr(host,':');size_t name=colon?(size_t)(colon-host):strlen(host);
+  snprintf(port,sizeof port,":%d",PORT);if(colon&&strcmp(colon,port))return 0;
+  if(name==9&&!strncasecmp(host,"localhost",9))return 1;
+  if(!name||name>=sizeof literal)return 0;memcpy(literal,host,name);literal[name]=0;return inet_pton(AF_INET,literal,&address)==1;
+}
+/* A browser always names the page that sent a POST. Native clients send no
+ * Origin, so only a present Origin for another host is refused. */
+static int http_request_refusal(const char *request,const char *method){
+  char host[64]={0},origin[256]={0};const char *line=strstr(request,"\r\n");
+  int http10=line&&line-request>=9&&!memcmp(line-9," HTTP/1.0",9),host_seen=native_header(request,"Host",host,sizeof host);
+  if(host_seen<0||(!host_seen&&!http10))return 400;
+  if(host_seen&&!http_host_allowed(host))return 421;
+  if(strcmp(method,"POST"))return 0;
+  int origin_seen=native_header(request,"Origin",origin,sizeof origin);if(origin_seen<0)return 400;
+  return origin_seen&&(!host_seen||strncasecmp(origin,"http://",7)||strcasecmp(origin+7,host))?403:0;
+}
 
 #if defined(BW_NATIVE_BACKEND) && defined(BW_HOME_STARTUP)
 static int native_reader_peer(int fd){
@@ -780,7 +826,12 @@ static void serve(int fd, const char *host) {
   int request_size;
   size_t body_size;
   struct timeval tv;
+  double deadline = http_deadline();
+  int refused;
 
+  if (deadline < 0) {
+    log_line("request clock unavailable");return;
+  }
 #ifdef SO_NOSIGPIPE
   int no_sigpipe=1;
   if(setsockopt(fd,SOL_SOCKET,SO_NOSIGPIPE,&no_sigpipe,sizeof no_sigpipe)){
@@ -792,9 +843,11 @@ static void serve(int fd, const char *host) {
   tv.tv_usec = 0;
   setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
   setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
-  request_size = read_request(fd, req, sizeof req);
-  if (request_size < 0 || sscanf(req, "%7s %4095s", method, url) != 2) {
-    send_text(fd, 400, "Bad Request", "text/plain", "bad request");
+  request_size = read_request(fd, req, sizeof req, deadline);
+  refused = request_size < 0 || sscanf(req, "%7s %4095s", method, url) != 2 ? 400 : http_request_refusal(req, method);
+  if (refused) {
+    send_text(fd, refused, refused == 400 ? "Bad Request" : refused == 421 ? "Misdirected Request" : "Forbidden", "text/plain",
+              refused == 400 ? "bad request" : refused == 421 ? "misdirected request" : "forbidden");
 #ifdef BW_NATIVE_BACKEND
     bw_native_sensitive_clear(req,sizeof req);
 #endif

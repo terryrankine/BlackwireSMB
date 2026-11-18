@@ -1728,6 +1728,7 @@ static int handle_core(struct bw_native_backend *p,const char *owner,const char 
     if(!strcmp(method,"POST")&&!strcmp(url,"/api/start"))return start_play(p,body,size,token,1,out);
     if(!strcmp(method,"POST")&&!strcmp(url,"/api/close"))return stop_play(p,body,size,token,out);
     if(!strcmp(method,"POST")&&!strcmp(url,"/api/refresh")){
+        if(!action_authorized(p,token))return text(out,403,"{\"error\":\"Refresh Blackwire before reading the PC library\"}");
         if(size&&(size!=2||memcmp(body,"{}",2)))return text(out,400,"{\"error\":\"Refresh takes no source selection\"}");
         int result=refresh_unlocked(p);return text(out,result==0?202:result==1?409:503,result==0?"{\"ok\":true,\"message\":\"Reading the PC library\"}":result==1?"{\"error\":\"Library discovery is already running\"}":"{\"error\":\"Library discovery could not start\"}");
     }

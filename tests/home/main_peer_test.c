@@ -3,6 +3,9 @@
 #define _DEFAULT_SOURCE 1
 #include "main-under-test.h"
 #include <assert.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <time.h>
 static unsigned cases,checks,claims,normal_requests;
 static int observed_peer,observed_header,observed_origin;
 #define C(x) do{checks++;if(!(x)){fprintf(stderr,"case%u line%u %s\n",cases,__LINE__,#x);exit(1);}}while(0)
@@ -33,5 +36,38 @@ int main(void){
     snprintf(request,sizeof request,"%sContent-Length: 2\r\n\r\n{}",base);exchange(request,1,response);C(strstr(response," 400 ")&&claims==before);
     exchange("GET /api/reader/bootstrap HTTP/1.1\r\nHost:127.0.0.1\r\n\r\n",1,response);C(strstr(response," 405 ")&&claims==before);
     exchange("POST /api/reader/bootstrap HTTP/1.1\r\nHost:127.0.0.1\r\nContent-Type:text/plain\r\nX-Blackwire-Reader:home/1\r\nContent-Length:2\r\n\r\n{}",1,response);C(strstr(response," 415 ")&&claims==before);
-    printf("{\"passed\":true,\"cases\":%u,\"checks\":%u,\"actualHttpParserAndTrustedPeerRoute\":true,\"backendQueueModeled\":true}\n",cases,checks);return 0;
+    /* Every response carries the framing, sniffing and referrer headers. */
+    exchange("GET / HTTP/1.1\r\nHost: 127.0.0.1:5918\r\n\r\n",1,response);C(strstr(response,"HTTP/1.0 200 ")&&strstr(response,"\r\nX-Frame-Options: DENY\r\n")&&strstr(response,"\r\nContent-Security-Policy: frame-ancestors 'none'\r\n")&&
+        strstr(response,"\r\nX-Content-Type-Options: nosniff\r\n")&&strstr(response,"\r\nReferrer-Policy: no-referrer\r\n")&&!strstr(response,"script-src"));
+    exchange("GET /missing HTTP/1.1\r\nHost: evil.invalid\r\n\r\n",1,response);C(strstr(response,"HTTP/1.0 421 ")&&strstr(response,"\r\nX-Frame-Options: DENY\r\n"));
+    /* DNS rebinding: only loopback names and literal IPv4 on this port are served. */
+    const char *good[]={"127.0.0.1","127.0.0.1:5918","localhost","LocalHost:5918","192.0.2.20","192.0.2.20:5918"};
+    for(unsigned i=0;i<sizeof good/sizeof *good;i++){snprintf(request,sizeof request,"GET / HTTP/1.1\r\nHost: %s\r\n\r\n",good[i]);exchange(request,1,response);C(strstr(response,"HTTP/1.0 200 "));}
+    const char *bad[]={"evil.invalid","evil.invalid:5918","127.0.0.1:80","127.0.0.1:","localhost.evil.invalid","localhost:59180","1.2.3.4.5","256.0.0.1","0x7f.0.0.1","127.1",":5918","[::1]:5918"};
+    before=normal_requests;
+    for(unsigned i=0;i<sizeof bad/sizeof *bad;i++){snprintf(request,sizeof request,"GET /api/state HTTP/1.1\r\nHost: %s\r\n\r\n",bad[i]);exchange(request,1,response);C(strstr(response,"HTTP/1.0 421 ")&&normal_requests==before);}
+    exchange("GET / HTTP/1.1\r\n\r\n",1,response);C(strstr(response,"HTTP/1.0 400 "));
+    exchange("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nHost: evil.invalid\r\n\r\n",1,response);C(strstr(response,"HTTP/1.0 400 "));
+    exchange("GET / HTTP/1.0\r\n\r\n",1,response);C(strstr(response,"HTTP/1.0 200 ")); /* HTTP/1.0 may omit Host. */
+    /* Cross-origin POST is refused before any handler; absent Origin is native. */
+    const char *post="POST /api/refresh HTTP/1.1\r\nHost: %s\r\nContent-Type: application/json\r\nContent-Length: 2\r\n%s\r\n{}";
+    const char *refused[]={"Origin: http://evil.invalid\r\n","Origin: null\r\n","Origin: https://127.0.0.1:5918\r\n","Origin: http://127.0.0.1\r\n","Origin: http://127.0.0.1:5918/\r\n","Origin: http://127.0.0.1:5918\r\nOrigin: http://127.0.0.1:5918\r\n"};
+    before=normal_requests;
+    for(unsigned i=0;i<sizeof refused/sizeof *refused;i++){snprintf(request,sizeof request,post,"127.0.0.1:5918",refused[i]);exchange(request,1,response);C((strstr(response,"HTTP/1.0 403 ")||(i==5&&strstr(response,"HTTP/1.0 400 ")))&&normal_requests==before);}
+    exchange("POST /api/refresh HTTP/1.0\r\nContent-Type: application/json\r\nOrigin: http://127.0.0.1:5918\r\nContent-Length: 2\r\n\r\n{}",1,response);C(strstr(response,"HTTP/1.0 403 ")&&normal_requests==before);
+    snprintf(request,sizeof request,post,"192.0.2.20:5918","Origin: http://192.0.2.20:5918\r\n");exchange(request,1,response);C(strstr(response,"HTTP/1.0 404 ")&&normal_requests==before+2);
+    snprintf(request,sizeof request,post,"127.0.0.1:5918","Origin: HTTP://127.0.0.1:5918\r\n");exchange(request,1,response);C(strstr(response,"HTTP/1.0 404 ")&&normal_requests==before+4);
+    snprintf(request,sizeof request,post,"127.0.0.1:5918","");exchange(request,1,response);C(strstr(response,"HTTP/1.0 404 ")&&normal_requests==before+6);
+    /* A peer dripping bytes inside the per-read timeout is still cut off by the
+     * request budget instead of holding the single-threaded listener. */
+    {
+        cases++;int pair[2];C(!socketpair(AF_UNIX,SOCK_STREAM,0,pair));pid_t child=fork();C(child>=0);
+        if(!child){signal(SIGPIPE,SIG_IGN);close(pair[1]);const char *drip="GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Slow: aaaaaaaaaaaaaaaa";
+            for(const char *at=drip;*at;at++){if(write(pair[0],at,1)!=1)_exit(0);struct timespec t={0,500000000};nanosleep(&t,NULL);}_exit(0);}
+        C(!close(pair[0]));struct timespec began,ended;C(!clock_gettime(CLOCK_MONOTONIC,&began));
+        serve(pair[1],"127.0.0.1");C(!close(pair[1]));C(!clock_gettime(CLOCK_MONOTONIC,&ended));
+        double elapsed=(double)(ended.tv_sec-began.tv_sec)+(double)(ended.tv_nsec-began.tv_nsec)/1e9;C(elapsed>=4.5&&elapsed<6.5);
+        C(!kill(child,SIGKILL));int status;C(waitpid(child,&status,0)==child);
+    }
+    printf("{\"passed\":true,\"cases\":%u,\"checks\":%u,\"actualHttpParserAndTrustedPeerRoute\":true,\"backendQueueModeled\":true,\"hostOriginAndBudgetRefusals\":true}\n",cases,checks);return 0;
 }

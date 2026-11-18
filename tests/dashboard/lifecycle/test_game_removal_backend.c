@@ -72,5 +72,9 @@ int main(void){
         if(!mode)CHECK(f.p->library.prepared[0].state==BW_PREPARED_ABSENT&&!f.p->library.removal[0].removed&&!f.p->library.removal[0].can_restore);
         out=action(&f,op,"/api/remove-startup",body,token,409);bw_native_response_clear(&out);CHECK(atomic_load(&f.startups)==1);fixture_close(&f);cases++;
     }
+    /* Refresh starts PC discovery, so a page without the action token cannot. A
+     * valid token reaches the body check without starting discovery here. */
+    fixture_init(&f);out=action(&f,NULL,"/api/refresh","{}",NULL,403);bw_native_response_clear(&out);out=action(&f,NULL,"/api/refresh","{}","bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",403);bw_native_response_clear(&out);
+    out=action(&f,NULL,"/api/refresh","{\"source\":1}",token,400);bw_native_response_clear(&out);CHECK(f.p->phase==BACKEND_READY);fixture_close(&f);cases++;
     printf("{\"passed\":true,\"cases\":%u,\"checks\":%u,\"actualReservedRoutesAndWorker\":true,\"readOnlyPollingNeverProbes\":true,\"deletionTransportModeled\":true,\"consoleActions\":0}\n",cases,atomic_load(&checked));return 0;
 }

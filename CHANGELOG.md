@@ -2,6 +2,16 @@
 
 Changes are grouped by published preview. A build pass, initial menu and controllable gameplay are recorded separately in [testing](docs/TESTING.md).
 
+## Unreleased
+
+- Refuse requests on port 5918 whose Host is not `127.0.0.1`, `localhost` or a literal IPv4 address, optionally with `:5918`. This blocks DNS-rebinding pages. HTTP/1.1 requests without Host are refused. HTTP/1.0 may still omit it.
+- Refuse a POST whose Origin is present but is not `http://` plus the request Host. Native clients that send no Origin, including the home-screen reader bootstrap, are unchanged.
+- Give each request read and each response write one 5-second total budget, on top of the existing per-call socket timeouts. A slowly dripping client can no longer hold the single-threaded listener.
+- Send `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'` and `Referrer-Policy: no-referrer` with every response. No script policy is set, because the page uses inline script and style.
+- Require the resident action token on `POST /api/refresh`, as the other actions already do. The page already sends it.
+
+Focused host checks passed with GCC 13 under ASan/UBSan, not the documented clang-18. The 92 UI tests passed. No SDK build or console test has been run. Source-manifest pins for the changed files are not yet updated.
+
 ## v0.3.0-beta.3 — automatic Media setup and preparation repairs
 
 - Publish the exact manually loaded normal **Blackwire.elf**, build ID `blackwire-v0.3.0-beta.3`; use the same filename for the direct download and single Payload Manager entry.
