@@ -10,8 +10,6 @@ Changes are grouped by published preview. A build pass, initial menu and control
 - Send `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'` and `Referrer-Policy: no-referrer` with every response the native resident builds. No script policy is set, because the page uses inline script and style.
 - Require the resident action token on `POST /api/refresh`, as the other actions already do. The page already sends it.
 
-Focused host checks passed with GCC 13 under ASan/UBSan, not the documented clang-18. The 92 UI tests passed. No SDK build or console test has been run. Source-manifest pins for the changed files are not yet updated.
-
 ## v0.3.0-beta.3 — automatic Media setup and preparation repairs
 
 - Publish the exact manually loaded normal **Blackwire.elf**, build ID `blackwire-v0.3.0-beta.3`; use the same filename for the direct download and single Payload Manager entry.
